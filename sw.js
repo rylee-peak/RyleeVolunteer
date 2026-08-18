@@ -1,3 +1,29 @@
+importScripts("https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+    apiKey: "AIzaSyAdrSGBDl4xlQhTw-LaD3YZUJnM2UmBiaU",
+    authDomain: "rylee-for-mayor-volunteers.firebaseapp.com",
+    projectId: "rylee-for-mayor-volunteers",
+    storageBucket: "rylee-for-mayor-volunteers.firebasestorage.app",
+    messagingSenderId: "259311879856",
+    appId: "1:259311879856:web:e856506872fe5591329d75",
+    measurementId: "G-PS49HLL5XN"
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+    console.log('[sw.js] Received background message ', payload);
+    const notificationTitle = payload.notification.title || "Campaign Alert";
+    const notificationOptions = {
+        body: payload.notification.body,
+        icon: "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV"
+    };
+
+    self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
 const CACHE_NAME = 'rylee-vol-v1';
 const STATIC_ASSETS = [
     './index.html',
@@ -7,7 +33,6 @@ const STATIC_ASSETS = [
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
 
-// Install: Cache basic offline shell (HTML + CSS libraries)
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
@@ -17,7 +42,6 @@ self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
 
-// Activate: Clean up old caches
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((cacheNames) => {
@@ -28,14 +52,12 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Fetch: Network first for API, Cache-first for static.
-// CRITICAL SECURITY: Never cache Firestore API calls containing sensitive user credentials.
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     
     // Bypass caching for Firebase API/Firestore completely to ensure security and live data
-    if (url.hostname.includes('firestore.googleapis.com') || url.hostname.includes('firebase')) {
-        return; // Let the browser handle it directly via network
+    if (url.hostname.includes('firestore.googleapis.com') || url.hostname.includes('firebase') || url.hostname.includes('identitytoolkit')) {
+        return; 
     }
 
     event.respondWith(
