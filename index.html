@@ -326,15 +326,127 @@
             authMode: 'login',
 
             init: () => {
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW Error:', e));
+                const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+                if ('serviceWorker' in navigator && isValidEnv) {
+                    navigator.serviceWorker.register('./sw.js').catch(e => {
+                        // Suppress the specific Canvas/Sandbox routing error where it returns HTML instead of JS
+                        if(e.message && !e.message.includes("'<Location>'") && !e.toString().includes("<")) {
+                            console.error('SW Error:', e);
+                        }
+                    });
                 }
 
-                if(!app.isStandalone) {
-                    document.getElementById('auth-page').classList.add('hidden');
-                    document.getElementById('landing-page').classList.remove('hidden');
+                // Listen for authentication state changes
+                onAuthStateChanged(auth, async (user) => {
+                    const loader = document.getElementById('global-loader');
+                    if (loader) {
+                        loader.style.opacity = '0';
+                        setTimeout(() => loader.classList.add('hidden'), 300);
+                    }
+
+                    if (user) {
+                        try {
+                            const userDoc = await getDoc(doc(db, "users", user.uid));
+                            if (userDoc.exists()) {
+                                appState.user = user;
+                                appState.profile = userDoc.data();
+                                appState.isAdmin = appState.profile.role === 'admin';
+                                
+                                document.getElementById('landing-page').classList.add('hidden');
+                                document.getElementById('auth-page').classList.add('hidden');
+                                document.getElementById('main-app').classList.remove('hidden');
+                                document.getElementById('main-app').classList.add('flex');
+                                
+                                const init = appState.profile.firstName ? appState.profile.firstName.charAt(0).toUpperCase() : '?';
+                                const avatarD = document.getElementById('user-avatar-desktop');
+                                const avatarM = document.getElementById('user-avatar-mobile');
+                                const nameD = document.getElementById('user-name-desktop');
+                                const roleD = document.getElementById('user-role-desktop');
+                                
+                                if(avatarD) avatarD.innerText = init;
+                                if(avatarM) avatarM.innerText = init;
+                                if(nameD) nameD.innerText = `${appState.profile.firstName} ${appState.profile.lastName}`;
+                                if(roleD) roleD.innerText = appState.profile.role;
+                                
+                                app.buildNavigation();
+                                app.setupRealtimeListeners();
+                                app.updateUnreadBadge();
+                                app.navigate('dashboard');
+
+                                if (Notification.permission === 'granted') {
+                                    app.setupFCMToken();
+                                } else if (Notification.permission !== 'denied') {
+                                    setTimeout(() => {
+                                        const onboarding = document.getElementById('notification-onboarding');
+                                        if (onboarding) onboarding.classList.remove('hidden');
+                                    }, 2000);
+                                }
+                            } else {
+                                app.logout();
+                            }
+                        } catch(e) {
+                            console.error("Error fetching profile:", e);
+                            UI.toast("Error loading profile", "error");
+                        }
+                    } else {
+                        appState.user = null;
+                        appState.profile = null;
+                        appState.isAdmin = false;
+                        app.clearRealtimeListeners();
+                        
+                        document.getElementById('main-app').classList.add('hidden');
+                        document.getElementById('main-app').classList.remove('flex');
+                        
+                        if (app.isStandalone) {
+                            document.getElementById('landing-page').classList.add('hidden');
+                            document.getElementById('auth-page').classList.remove('hidden');
+                            document.getElementById('auth-page').classList.add('flex');
+                        } else {
+                            document.getElementById('auth-page').classList.add('hidden');
+                            document.getElementById('auth-page').classList.remove('flex');
+                            document.getElementById('landing-page').classList.remove('hidden');
+                        }
+                    }
+                });
+            },
+
+            showAuth: (mode) => {
+                app.authMode = mode;
+                document.getElementById('landing-page').classList.add('hidden');
+                document.getElementById('auth-page').classList.remove('hidden');
+                document.getElementById('auth-page').classList.add('flex');
+                
+                const title = document.getElementById('auth-title');
+                const subtitle = document.getElementById('auth-subtitle');
+                const nameFields = document.getElementById('name-fields');
+                const btn = document.getElementById('auth-btn');
+                const toggle = document.getElementById('auth-toggle-btn');
+                
+                if (mode === 'register') {
+                    title.innerText = 'Join the Campaign';
+                    subtitle.innerText = 'Create your volunteer account.';
+                    nameFields.classList.remove('hidden');
+                    document.getElementById('auth-fname').required = true;
+                    document.getElementById('auth-lname').required = true;
+                    btn.innerText = 'Register';
+                    toggle.innerText = 'Already have an account? Sign In';
+                } else {
+                    title.innerText = 'Welcome Back';
+                    subtitle.innerText = 'Sign in to access your volunteer hub.';
+                    nameFields.classList.add('hidden');
+                    document.getElementById('auth-fname').required = false;
+                    document.getElementById('auth-lname').required = false;
+                    btn.innerText = 'Sign In';
+                    toggle.innerText = 'Need an account? Register';
                 }
             },
+
+            closeAuth: () => {
+                document.getElementById('auth-page').classList.add('hidden');
+                document.getElementById('auth-page').classList.remove('flex');
+                document.getElementById('landing-page').classList.remove('hidden');
+            },
+
             toggleAuthMode: () => app.showAuth(app.authMode === 'login' ? 'register' : 'login'),
 
             handleAuth: async () => {
@@ -473,8 +585,18 @@
             setupFCMToken: async () => {
                 if (!messaging) return;
                 try {
-                    // Wait for the unified service worker to be ready
-                    const registration = await navigator.serviceWorker.register('./sw.js');
+                    const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+                    if (!isValidEnv) {
+                        console.warn("FCM registration skipped: invalid environment (e.g. Canvas Preview).");
+                        return;
+                    }
+                    
+                    // Wait for the unified service worker to be ready (fail gracefully in Sandbox)
+                    const registration = await navigator.serviceWorker.register('./sw.js').catch(e => null);
+                    if (!registration) {
+                        console.warn("FCM registration skipped: Service Worker unavailable in this preview environment.");
+                        return;
+                    }
                     
                     const vapidKey = "BGGIJRt1rLfyCPVoJK0ufqrdP3HcOHIwL-tHFDocbLxJz22TjDrdX8R_r_2aVqhHSiHmICNoa8vzoSkB0EKjDpI"; 
                     
