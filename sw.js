@@ -1,76 +1,1484 @@
-importScripts("https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging-compat.js");
-
-firebase.initializeApp({
-    apiKey: "AIzaSyAdrSGBDl4xlQhTw-LaD3YZUJnM2UmBiaU",
-    authDomain: "rylee-for-mayor-volunteers.firebaseapp.com",
-    projectId: "rylee-for-mayor-volunteers",
-    storageBucket: "rylee-for-mayor-volunteers.firebasestorage.app",
-    messagingSenderId: "259311879856",
-    appId: "1:259311879856:web:e856506872fe5591329d75",
-    measurementId: "G-PS49HLL5XN"
-});
-
-const messaging = firebase.messaging();
-
-messaging.onBackgroundMessage((payload) => {
-    console.log('[sw.js] Received background message ', payload);
-    const notificationTitle = payload.notification.title || "Campaign Alert";
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV"
-    };
-
-    self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-const CACHE_NAME = 'rylee-vol-v1';
-const STATIC_ASSETS = [
-    './index.html',
-    './manifest.json',
-    'https://cdn.tailwindcss.com',
-    'https://unpkg.com/@phosphor-icons/web',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
-];
-
-self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(STATIC_ASSETS);
-        })
-    );
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))
-            );
-        })
-    );
-});
-
-self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RyleeVolunteer</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0047AB">
     
-    // Bypass caching for Firebase API/Firestore completely to ensure security and live data
-    if (url.hostname.includes('firestore.googleapis.com') || url.hostname.includes('firebase') || url.hostname.includes('identitytoolkit')) {
-        return; 
-    }
-
-    event.respondWith(
-        caches.match(event.request).then((cachedResponse) => {
-            if (cachedResponse) {
-                return cachedResponse;
-            }
-            return fetch(event.request).catch(() => {
-                // If offline and requesting a page, return the index shell
-                if (event.request.mode === 'navigate') {
-                    return caches.match('./index.html');
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        campaign: { blue: '#0047AB', teal: '#3CAEA3', yellow: '#F9B233', dark: '#0f172a' }
+                    }
                 }
+            }
+        }
+    </script>
+
+    <style>
+        body { -webkit-tap-highlight-color: transparent; background-color: #f8fafc; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .modal-enter { animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes modalEnter { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .nav-item.active { background-color: #eff6ff; color: #0047AB; font-weight: 600; border-right: 3px solid #0047AB; }
+        .nav-item-mobile.active { color: #0047AB; font-weight: 600; }
+        .nav-item-mobile.active i { background-color: #eff6ff; padding: 4px 12px; border-radius: 999px; }
+    </style>
+</head>
+<body class="text-gray-800 antialiased overflow-hidden">
+
+    <div id="global-loader" class="fixed inset-0 bg-campaign-blue z-50 flex flex-col items-center justify-center text-white transition-opacity duration-300">
+        <i class="ph ph-hands-clapping text-6xl mb-4 animate-bounce"></i>
+        <h1 class="text-2xl font-bold tracking-tight">RyleeVolunteer</h1>
+        <div class="spinner w-8 h-8 mt-6"></div>
+    </div>
+
+    <div id="toast-container" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none"></div>
+
+    <div id="modal-container" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onclick="UI.closeModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div id="modal-content" class="pointer-events-auto w-full max-w-md max-h-[90vh] overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <div id="landing-page" class="hidden fixed inset-0 bg-white overflow-y-auto z-40">
+        <nav class="p-6 flex justify-between items-center max-w-6xl mx-auto">
+            <div class="flex items-center gap-2 text-campaign-blue font-bold text-xl tracking-tight">
+                <i class="ph-fill ph-hands-clapping text-2xl"></i> Vote Rylee
+            </div>
+            <button onclick="app.showAuth('login')" class="bg-campaign-blue text-white px-6 py-2 rounded-full font-medium hover:bg-blue-800 transition shadow-sm">Sign In / Register</button>
+        </nav>
+        <main class="max-w-6xl mx-auto px-6 py-12 md:py-24 grid md:grid-cols-2 gap-12 items-center">
+            <div>
+                <span class="text-campaign-teal font-bold uppercase tracking-wider text-sm mb-4 block">Official Campaign Platform</span>
+                <h1 class="text-5xl md:text-6xl font-extrabold text-gray-900 leading-tight mb-6">Powering the people behind the campaign.</h1>
+                <p class="text-xl text-gray-600 mb-8 leading-relaxed">Join the movement. RyleeVolunteer is your central hub for canvassing shifts, phone banking, important updates, and connecting with the community.</p>
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button onclick="app.showAuth('register')" class="bg-campaign-yellow text-campaign-dark px-8 py-4 rounded-full font-bold text-lg hover:bg-yellow-500 transition shadow-md text-center">Become a Volunteer</button>
+                    <a href="https://VoteRylee.com" target="_blank" class="border-2 border-gray-200 text-gray-700 px-8 py-4 rounded-full font-bold text-lg hover:border-campaign-blue hover:text-campaign-blue transition text-center flex items-center justify-center gap-2">Visit Campaign Site <i class="ph ph-arrow-up-right"></i></a>
+                </div>
+            </div>
+            <div class="relative">
+                <div class="absolute inset-0 bg-gradient-to-tr from-campaign-blue to-campaign-teal rounded-3xl transform rotate-3 opacity-20"></div>
+                <img src="https://placehold.co/800x1000/0047AB/FFFFFF?text=Volunteer+Community" alt="Volunteers" class="relative rounded-3xl shadow-2xl object-cover border-4 border-white">
+            </div>
+        </main>
+        <footer class="bg-gray-50 py-12 mt-12 border-t border-gray-100">
+            <div class="max-w-6xl mx-auto px-6 text-center">
+                <p class="text-sm text-gray-500 font-medium">Paid for by Rylee Peak for Mayor 2026 | FPPC ID: 1481941</p>
+            </div>
+        </footer>
+    </div>
+
+    <div id="auth-page" class="hidden fixed inset-0 bg-gray-50 z-40 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md p-8 rounded-3xl shadow-xl border border-gray-100 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-campaign-blue via-campaign-teal to-campaign-yellow"></div>
+            
+            <div class="text-center mb-8 pt-4">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-50 rounded-2xl text-campaign-blue mb-4">
+                    <i class="ph-fill ph-hands-clapping text-3xl"></i>
+                </div>
+                <h2 id="auth-title" class="text-2xl font-bold text-gray-900">Welcome Back</h2>
+                <p id="auth-subtitle" class="text-gray-500 mt-1">Sign in to access your volunteer hub.</p>
+            </div>
+
+            <form id="auth-form" class="space-y-4" onsubmit="event.preventDefault(); app.handleAuth()">
+                <div id="name-fields" class="hidden grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                        <input type="text" id="auth-fname" class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-campaign-blue focus:ring-2 focus:ring-blue-100 transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                        <input type="text" id="auth-lname" class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-campaign-blue focus:ring-2 focus:ring-blue-100 transition">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                    <input type="email" id="auth-email" required class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-campaign-blue focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input type="password" id="auth-password" required class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-campaign-blue focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+                
+                <button type="submit" id="auth-btn" class="w-full bg-campaign-blue text-white rounded-xl px-4 py-3.5 font-bold hover:bg-blue-800 transition shadow-sm flex justify-center items-center h-12">
+                    Sign In
+                </button>
+            </form>
+            
+            <div class="mt-6 text-center text-sm">
+                <button id="auth-toggle-btn" onclick="app.toggleAuthMode()" class="text-campaign-blue font-medium hover:underline">Need an account? Register</button>
+            </div>
+            <div class="mt-4 text-center">
+                <button onclick="app.closeAuth()" class="text-xs text-gray-400 hover:text-gray-600">Back to Website</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification-onboarding" class="hidden fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl transform transition-all">
+            <div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-campaign-blue">
+                <i class="ph-fill ph-bell-ringing text-4xl animate-bounce"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">Stay in the loop</h2>
+            <p class="text-gray-600 mb-8 leading-relaxed text-sm">Turn on notifications so we can send you urgent campaign updates and shift reminders.</p>
+            <div class="space-y-3">
+                <button onclick="app.resolveNotificationPrompt(true)" class="w-full bg-campaign-blue text-white rounded-xl px-4 py-3.5 font-bold hover:bg-blue-800 transition shadow-sm">Allow Notifications</button>
+                <button onclick="app.resolveNotificationPrompt(false)" class="w-full text-gray-500 font-medium hover:text-gray-800 transition py-2">Skip for now</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app" class="hidden h-screen w-full flex flex-col md:flex-row bg-gray-50">
+        
+        <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-full flex-shrink-0 relative z-20">
+            <div class="p-6 border-b border-gray-100 flex items-center gap-3">
+                <div class="bg-campaign-blue text-white p-2 rounded-lg"><i class="ph-fill ph-hands-clapping text-xl"></i></div>
+                <div>
+                    <h1 class="font-bold text-gray-900 tracking-tight leading-none">RyleeVolunteer</h1>
+                    <span class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Campaign Hub</span>
+                </div>
+            </div>
+            
+            <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto" id="desktop-nav"></nav>
+            
+            <div class="p-4 border-t border-gray-100">
+                <div onclick="app.navigate('profile')" class="flex items-center gap-3 mb-4 px-2 py-2 -mx-2 rounded-xl cursor-pointer hover:bg-gray-50 transition group" title="View Profile">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-lg group-hover:bg-campaign-blue group-hover:text-white transition" id="user-avatar-desktop">?</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold text-gray-900 truncate" id="user-name-desktop">Volunteer</p>
+                        <p class="text-xs text-gray-500 truncate capitalize" id="user-role-desktop">Member</p>
+                    </div>
+                </div>
+                <button onclick="app.logout()" class="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition">
+                    <i class="ph ph-sign-out text-lg"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 h-full overflow-hidden flex flex-col relative z-10">
+            <header class="md:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between flex-shrink-0 z-20 shadow-sm">
+                <div class="flex items-center gap-2 text-campaign-blue font-bold">
+                    <i class="ph-fill ph-hands-clapping text-xl"></i> RyleeVolunteer
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="app.navigate('profile')" class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-sm" id="user-avatar-mobile">?</button>
+                </div>
+            </header>
+
+            <div id="view-container" class="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8 relative">
+                <!-- Views injected here -->
+            </div>
+        </main>
+
+        <nav class="md:hidden bg-white border-t border-gray-200 fixed bottom-0 w-full z-30 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <div class="flex justify-around items-center h-16 px-2" id="mobile-nav"></div>
+        </nav>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { 
+            getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+            signOut, onAuthStateChanged, updateProfile 
+        } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { 
+            getFirestore, collection, doc, setDoc, getDoc, getDocs, 
+            updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, 
+            addDoc, limit, onSnapshot
+        } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAdrSGBDl4xlQhTw-LaD3YZUJnM2UmBiaU",
+            authDomain: "rylee-for-mayor-volunteers.firebaseapp.com",
+            projectId: "rylee-for-mayor-volunteers",
+            storageBucket: "rylee-for-mayor-volunteers.firebasestorage.app",
+            messagingSenderId: "259311879856",
+            appId: "1:259311879856:web:e856506872fe5591329d75",
+            measurementId: "G-PS49HLL5XN"
+        };
+
+        const fbApp = initializeApp(firebaseConfig);
+        const auth = getAuth(fbApp);
+        const db = getFirestore(fbApp);
+        const messaging = typeof window !== 'undefined' && 'serviceWorker' in navigator ? getMessaging(fbApp) : null;
+
+        // Listen for foreground FCM messages
+        if (messaging) {
+            onMessage(messaging, (payload) => {
+                console.log('FCM Message received in foreground: ', payload);
+                // The realtime snapshot listener already handles the in-app Toast popups for these.
             });
-        })
-    );
-});
+        }
+
+        const appState = { user: null, profile: null, isAdmin: false, currentView: 'dashboard', users: [], unsubscribes: [], loadTime: Date.now() };
+
+        const UI = {
+            escapeHtml: (unsafe) => {
+                if(!unsafe) return '';
+                return (unsafe+'').replace(/[&<"']/g, m => {
+                    switch (m) { case '&': return '&amp;'; case '<': return '&lt;'; case '"': return '&quot;'; case "'": return '&#039;'; }
+                });
+            },
+            
+            toast: (message, type = 'success') => {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                const isError = type === 'error';
+                const isInfo = type === 'info';
+                
+                let icon = 'ph-check-circle';
+                if (isError) icon = 'ph-warning-circle';
+                if (isInfo) icon = 'ph-bell';
+                
+                toast.className = `flex items-center gap-3 p-4 rounded-xl shadow-lg transform transition-all duration-300 translate-y-[-100%] opacity-0 ${isError ? 'bg-red-600 text-white' : (isInfo ? 'bg-campaign-blue text-white cursor-pointer hover:bg-blue-800' : 'bg-gray-900 text-white')}`;
+                toast.innerHTML = `<i class="ph-fill ${icon} text-xl"></i> <p class="text-sm font-medium">${UI.escapeHtml(message)}</p>`;
+                
+                if (isInfo) {
+                    toast.onclick = () => { toast.remove(); app.navigate('notifications'); };
+                }
+                
+                container.appendChild(toast);
+                
+                requestAnimationFrame(() => {
+                    toast.classList.remove('translate-y-[-100%]', 'opacity-0');
+                    toast.classList.add('translate-y-0', 'opacity-100');
+                });
+                
+                setTimeout(() => {
+                    toast.classList.remove('translate-y-0', 'opacity-100');
+                    toast.classList.add('translate-y-[-100%]', 'opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 4000);
+            },
+
+            openModal: (contentHtml, customClasses = '') => {
+                const container = document.getElementById('modal-container');
+                const content = document.getElementById('modal-content');
+                content.innerHTML = contentHtml;
+                if(customClasses) content.className = `pointer-events-auto w-full max-w-md max-h-[90vh] overflow-y-auto ${customClasses}`;
+                container.classList.remove('hidden');
+                content.classList.add('modal-enter');
+                document.body.style.overflow = 'hidden';
+            },
+
+            closeModal: () => {
+                const container = document.getElementById('modal-container');
+                const content = document.getElementById('modal-content');
+                content.classList.remove('modal-enter');
+                container.classList.add('hidden');
+                document.body.style.overflow = '';
+            },
+
+            confirm: (title, message, confirmText, isDanger, onConfirm) => {
+                const modalHtml = `
+                    <div class="bg-white p-6 rounded-xl shadow-2xl relative">
+                        <div class="w-12 h-12 rounded-full mb-4 flex items-center justify-center ${isDanger ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-campaign-blue'}">
+                            <i class="ph-fill ${isDanger ? 'ph-warning-circle' : 'ph-question'} text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-2 text-gray-900">${UI.escapeHtml(title)}</h3>
+                        <p class="text-gray-600 mb-8 text-sm">${UI.escapeHtml(message)}</p>
+                        <div class="flex justify-end gap-3 w-full">
+                            <button onclick="UI.closeModal()" class="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium transition">Cancel</button>
+                            <button id="confirm-action-btn" class="flex-1 px-4 py-3 text-white ${isDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-campaign-blue hover:bg-blue-800'} rounded-xl font-bold transition shadow-sm">${UI.escapeHtml(confirmText)}</button>
+                        </div>
+                    </div>
+                `;
+                UI.openModal(modalHtml, 'bg-transparent shadow-none');
+                document.getElementById('confirm-action-btn').onclick = () => {
+                    UI.closeModal();
+                    onConfirm();
+                };
+            },
+
+            showLoading: (id) => {
+                const el = document.getElementById(id);
+                if(el) el.innerHTML = `<div class="flex justify-center p-12"><div class="spinner border-campaign-blue border-l-transparent w-8 h-8"></div></div>`;
+            },
+            
+            showEmpty: (id, message, icon = 'ph-folder-open') => {
+                const el = document.getElementById(id);
+                if(el) el.innerHTML = `<div class="text-center p-12 bg-white rounded-2xl border border-gray-100 border-dashed"><i class="ph ${icon} text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 font-medium">${UI.escapeHtml(message)}</p></div>`;
+            }
+        };
+        window.UI = UI;
+
+        const app = {
+            isStandalone: window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone,
+            authMode: 'login',
+
+            init: () => {
+                const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+                if ('serviceWorker' in navigator && isValidEnv) {
+                    navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW Error:', e));
+                }
+
+                if(!app.isStandalone) {
+                    document.getElementById('auth-page').classList.add('hidden');
+                    document.getElementById('landing-page').classList.remove('hidden');
+                }
+            },
+            toggleAuthMode: () => app.showAuth(app.authMode === 'login' ? 'register' : 'login'),
+
+            handleAuth: async () => {
+                const email = document.getElementById('auth-email').value;
+                const pass = document.getElementById('auth-password').value;
+                const btn = document.getElementById('auth-btn');
+                const ogText = btn.innerText;
+                
+                btn.disabled = true; btn.innerHTML = '<div class="spinner w-5 h-5 mx-auto"></div>';
+
+                try {
+                    if (app.authMode === 'login') {
+                        await signInWithEmailAndPassword(auth, email, pass);
+                    } else {
+                        const fname = document.getElementById('auth-fname').value.trim();
+                        const lname = document.getElementById('auth-lname').value.trim();
+                        const cred = await createUserWithEmailAndPassword(auth, email, pass);
+                        const role = email === 'rylee.peak@rpeak.org' ? 'admin' : 'volunteer';
+                        
+                        await setDoc(doc(db, "users", cred.user.uid), {
+                            firstName: fname, lastName: lname, email: email,
+                            role: role, status: 'active', createdAt: serverTimestamp()
+                        });
+                    }
+                } catch (error) {
+                    let msg = "Authentication failed.";
+                    if(error.code === 'auth/invalid-credential') msg = "Incorrect email or password.";
+                    if(error.code === 'auth/email-already-in-use') msg = "Email already registered.";
+                    if(error.code === 'auth/weak-password') msg = "Password must be at least 6 characters.";
+                    UI.toast(msg, "error");
+                    btn.disabled = false; btn.innerText = ogText;
+                }
+            },
+
+            logout: () => signOut(auth),
+
+            updateUnreadBadge: async () => {
+                try {
+                    const lastRead = appState.profile?.lastNotificationReadTime || 0;
+                    let unreadCount = 0;
+                    
+                    const annSnap = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(10)));
+                    annSnap.docs.forEach(d => { if(d.data().createdAt?.toMillis() > lastRead) unreadCount++; });
+
+                    const alertSnap = await getDocs(query(collection(db, "pushAlerts"), orderBy("createdAt", "desc"), limit(10)));
+                    alertSnap.docs.forEach(d => { if(d.data().createdAt?.toMillis() > lastRead) unreadCount++; });
+
+                    const oppSnap = await getDocs(query(collection(db, "opportunities"), orderBy("createdAt", "desc"), limit(10)));
+                    oppSnap.docs.forEach(d => { if(d.data().createdAt?.toMillis() > lastRead) unreadCount++; });
+
+                    const credSnap = await getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)));
+                    credSnap.docs.forEach(d => { if(d.data().createdAt?.toMillis() > lastRead) unreadCount++; });
+
+                    const badgeD = document.getElementById('badge-d-notifications');
+                    const badgeM = document.getElementById('badge-m-notifications');
+                    
+                    if (unreadCount > 0) {
+                        if(badgeD) { badgeD.innerText = unreadCount; badgeD.classList.remove('hidden'); }
+                        if(badgeM) { badgeM.classList.remove('hidden'); }
+                    } else {
+                        if(badgeD) badgeD.classList.add('hidden');
+                        if(badgeM) badgeM.classList.add('hidden');
+                    }
+                } catch (e) {
+                    console.error("Error checking unread:", e);
+                }
+            },
+
+            incrementUnreadBadge: () => {
+                const bD = document.getElementById('badge-d-notifications');
+                const bM = document.getElementById('badge-m-notifications');
+                if (bD) {
+                    let count = parseInt(bD.innerText || '0') + 1;
+                    bD.innerText = count;
+                    bD.classList.remove('hidden');
+                }
+                if (bM) bM.classList.remove('hidden');
+            },
+
+            setupRealtimeListeners: () => {
+                app.clearRealtimeListeners();
+                const uid = auth.currentUser.uid;
+
+                const listenCollection = (q, extractTitle, msgPrefix, isPush = false) => {
+                    let isInitial = true;
+                    const unsub = onSnapshot(q, (snapshot) => {
+                        if (isInitial) {
+                            isInitial = false;
+                            return;
+                        }
+                        let hasNew = false;
+                        snapshot.docChanges().forEach(change => {
+                            // Only trigger on newly added items that weren't just created locally by this user
+                            if (change.type === 'added' && !change.doc.metadata.hasPendingWrites) {
+                                const data = change.doc.data();
+                                const docTime = data.createdAt?.toMillis() || 0;
+                                
+                                // FIX: Ignore any documents created before the exact moment the app was opened
+                                if (docTime < appState.loadTime - 5000) return;
+
+                                const title = extractTitle(data);
+                                const displayTitle = title && title.length > 35 ? title.substring(0, 35) + '...' : title;
+                                UI.toast(`${msgPrefix}${displayTitle ? ': ' + displayTitle : ''}`, 'info');
+                                hasNew = true;
+                            }
+                        });
+                        
+                        if (hasNew) {
+                            if (appState.currentView === 'notifications') {
+                                app.controllers.notifications(); // Refresh the list inline
+                                const now = Date.now();
+                                appState.profile.lastNotificationReadTime = now;
+                                updateDoc(doc(db, "users", uid), { lastNotificationReadTime: now }).catch(e => console.error(e));
+                            } else {
+                                app.incrementUnreadBadge();
+                            }
+                        }
+                    }, (error) => console.error("Realtime listen error:", error));
+                    
+                    appState.unsubscribes.push(unsub);
+                };
+
+                listenCollection(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(1)), data => data.title, "New Update", false);
+                listenCollection(query(collection(db, "pushAlerts"), orderBy("createdAt", "desc"), limit(1)), data => data.message, "Campaign Alert", true);
+                listenCollection(query(collection(db, "opportunities"), orderBy("createdAt", "desc"), limit(1)), data => data.title, "New Shift", false);
+                listenCollection(query(collection(db, "userCredentials"), where("userId", "==", uid)), data => "New tools available", "Tool Access Granted", false);
+            },
+
+            clearRealtimeListeners: () => {
+                if (appState.unsubscribes) {
+                    appState.unsubscribes.forEach(unsub => unsub());
+                    appState.unsubscribes = [];
+                }
+            },
+
+            setupFCMToken: async () => {
+                if (!messaging) return;
+                try {
+                    const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+                    if (!isValidEnv) {
+                        console.warn("FCM registration skipped: invalid environment (e.g. Canvas Preview).");
+                        return;
+                    }
+                    
+                    // Wait for the unified service worker to be ready
+                    const registration = await navigator.serviceWorker.register('./sw.js');
+                    
+                    const vapidKey = "BGGIJRt1rLfyCPVoJK0ufqrdP3HcOHIwL-tHFDocbLxJz22TjDrdX8R_r_2aVqhHSiHmICNoa8vzoSkB0EKjDpI"; 
+                    
+                    const token = await getToken(messaging, { 
+                        vapidKey: vapidKey,
+                        serviceWorkerRegistration: registration 
+                    });
+                    
+                    if (token) {
+                        await updateDoc(doc(db, "users", auth.currentUser.uid), { fcmToken: token });
+                    }
+                } catch(e) {
+                    console.error("FCM setup failed:", e);
+                }
+            },
+
+            resolveNotificationPrompt: async (accept) => {
+                if (accept) {
+                    try {
+                        const permission = await Notification.requestPermission();
+                        if (permission === "granted") {
+                            await app.setupFCMToken();
+                            UI.toast("Push notifications enabled!");
+                        }
+                    } catch(e) {
+                        console.error("Notification permission error:", e);
+                    }
+                }
+                document.getElementById('notification-onboarding').classList.add('hidden');
+            },
+
+            buildNavigation: () => {
+                const navItems = [
+                    { id: 'dashboard', icon: 'ph-squares-four', label: 'Dashboard' },
+                    { id: 'notifications', icon: 'ph-bell', label: 'Inbox' },
+                    { id: 'announcements', icon: 'ph-megaphone', label: 'Updates' },
+                    { id: 'opportunities', icon: 'ph-calendar-check', label: 'Shifts' },
+                    { id: 'directory', icon: 'ph-users', label: 'Community' },
+                    { id: 'tools', icon: 'ph-wrench', label: 'Tools' }
+                ];
+                if (appState.isAdmin) navItems.push({ id: 'admin', icon: 'ph-shield-check', label: 'Admin Console' });
+
+                document.getElementById('desktop-nav').innerHTML = navItems.map(item => `
+                    <a href="#" onclick="app.navigate('${item.id}')" id="nav-d-${item.id}" class="nav-item flex justify-between items-center px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition text-sm font-medium mb-1">
+                        <div class="flex items-center gap-3"><i class="ph ${item.icon} text-xl"></i> ${item.label}</div>
+                        ${item.id === 'notifications' ? `<span id="badge-d-notifications" class="hidden bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">0</span>` : ''}
+                    </a>
+                `).join('');
+
+                document.getElementById('mobile-nav').innerHTML = navItems.map(item => `
+                    <a href="#" onclick="app.navigate('${item.id}')" id="nav-m-${item.id}" class="nav-item-mobile flex flex-col items-center gap-1 text-gray-500 py-2 flex-1 px-1 text-center transition">
+                        <div class="relative">
+                            <i class="ph ${item.icon} text-2xl"></i>
+                            ${item.id === 'notifications' ? `<span id="badge-m-notifications" class="hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></span>` : ''}
+                        </div>
+                        <span class="text-[9px] font-medium uppercase tracking-wider">${item.label}</span>
+                    </a>
+                `).join('');
+            },
+
+            navigate: (viewId) => {
+                appState.currentView = viewId;
+                document.querySelectorAll('.nav-item, .nav-item-mobile').forEach(el => el.classList.remove('active'));
+                const dEl = document.getElementById(`nav-d-${viewId}`);
+                const mEl = document.getElementById(`nav-m-${viewId}`);
+                if(dEl) dEl.classList.add('active');
+                if(mEl) mEl.classList.add('active');
+
+                if (viewId === 'notifications') {
+                    const now = Date.now();
+                    appState.profile.lastNotificationReadTime = now;
+                    updateDoc(doc(db, "users", auth.currentUser.uid), { lastNotificationReadTime: now }).catch(e=>console.error(e));
+                    const bD = document.getElementById('badge-d-notifications');
+                    const bM = document.getElementById('badge-m-notifications');
+                    if (bD) bD.classList.add('hidden');
+                    if (bM) bM.classList.add('hidden');
+                }
+
+                const container = document.getElementById('view-container');
+                container.innerHTML = app.views[viewId]();
+                if(app.controllers[viewId]) app.controllers[viewId]();
+                container.scrollTo(0,0);
+            },
+
+            views: {
+                dashboard: () => `
+                    <div class="max-w-5xl mx-auto fade-in">
+                        <header class="mb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
+                            <div>
+                                <h2 class="text-3xl font-bold text-gray-900 mb-1">Welcome back, ${UI.escapeHtml(appState.profile?.firstName)}! 👋</h2>
+                                <p class="text-gray-500">Here's what's happening on the campaign trail today.</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="app.navigate('opportunities')" class="bg-campaign-blue text-white px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition shadow-sm text-sm flex items-center gap-2">
+                                    <i class="ph ph-calendar-plus text-lg"></i> Find a Shift
+                                </button>
+                            </div>
+                        </header>
+                        
+                        <!-- Top Stats Row -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-stats">
+                            <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col items-center justify-center h-24"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent"></div></div>
+                        </div>
+
+                        <div class="grid md:grid-cols-3 gap-6 mb-8">
+                            <div class="md:col-span-2 space-y-6">
+                                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                                    <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-4"><i class="ph-fill ph-check-circle text-campaign-teal text-xl"></i> Action Items</h3>
+                                    <div id="dash-alerts" class="space-y-3"><div class="spinner border-campaign-blue border-l-transparent w-6 h-6 mx-auto"></div></div>
+                                </div>
+                                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="ph-fill ph-calendar text-campaign-blue text-xl"></i> Upcoming Shifts</h3>
+                                        <button onclick="app.navigate('opportunities')" class="text-sm font-bold text-campaign-blue hover:underline">View All</button>
+                                    </div>
+                                    <div id="dash-my-shifts" class="space-y-3"><div class="spinner border-campaign-blue border-l-transparent w-6 h-6 mx-auto"></div></div>
+                                </div>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="bg-gradient-to-br from-campaign-blue to-blue-800 rounded-2xl p-6 shadow-md text-white relative overflow-hidden">
+                                    <div class="absolute -right-4 -top-4 opacity-10 text-9xl"><i class="ph-fill ph-megaphone"></i></div>
+                                    <h3 class="font-bold mb-4 opacity-90 flex items-center gap-2 relative z-10"><i class="ph ph-newspaper text-xl"></i> Latest Update</h3>
+                                    <div id="dash-latest-announcement" class="relative z-10"><div class="spinner border-white border-l-transparent w-6 h-6 mx-auto"></div></div>
+                                </div>
+                                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                                    <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ph-fill ph-lightning text-campaign-yellow text-xl"></i> Quick Links</h3>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <button onclick="app.navigate('directory')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-users text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Community</span></button>
+                                        <button onclick="app.navigate('tools')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-wrench text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">My Tools</span></button>
+                                        <button onclick="app.navigate('profile')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-user-circle text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Profile</span></button>
+                                        <a href="https://VoteRylee.com" target="_blank" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-globe text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Website</span></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                announcements: () => `<div class="max-w-3xl mx-auto fade-in"><header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Campaign Updates</h2><p class="text-gray-500">The latest news from the trail.</p></header><div id="announcements-list" class="space-y-6"></div></div>`,
+                opportunities: () => `<div class="max-w-5xl mx-auto fade-in"><header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Volunteer Shifts</h2><p class="text-gray-500">Sign up to help the campaign succeed.</p></header><div id="opps-list" class="grid md:grid-cols-2 gap-4"></div></div>`,
+                directory: () => `
+                    <div class="max-w-6xl mx-auto fade-in">
+                        <header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Community</h2><p class="text-gray-500">Meet your fellow volunteers.</p></header>
+                        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6 relative">
+                            <i class="ph ph-magnifying-glass absolute left-8 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                            <input type="text" id="dir-search" placeholder="Search by name or city..." class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3 outline-none focus:border-campaign-blue focus:ring-1 transition" onkeyup="app.filterDirectory(this.value)">
+                        </div>
+                        <div id="directory-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+                    </div>
+                `,
+                tools: () => `<div class="max-w-4xl mx-auto fade-in"><header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Campaign Tools</h2><p class="text-gray-500">Your secure access to third-party software.</p></header><div class="bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-campaign-blue mb-6 flex gap-3"><i class="ph-fill ph-info text-xl shrink-0"></i><p>These credentials are provisioned exclusively for you. <b>Never share these passwords.</b></p></div><div id="tools-list" class="grid md:grid-cols-2 gap-4"></div></div>`,
+                notifications: () => `
+                    <div class="max-w-3xl mx-auto fade-in">
+                        <header class="mb-6">
+                            <h2 class="text-3xl font-bold text-gray-900 mb-1">Inbox</h2>
+                            <p class="text-gray-500">Catch up on recent campaign activity.</p>
+                        </header>
+                        <div id="notifications-list" class="space-y-3"></div>
+                    </div>
+                `,
+                profile: () => `
+                    <div class="max-w-2xl mx-auto fade-in">
+                        <header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">My Profile</h2></header>
+                        
+                        <div class="bg-blue-50 rounded-2xl p-6 border border-blue-100 mb-6 flex justify-between items-center">
+                            <div>
+                                <h3 class="font-bold text-campaign-blue mb-1"><i class="ph-fill ph-bell-ringing"></i> Push Notifications</h3>
+                                <p class="text-sm text-blue-800">Receive system alerts for important campaign updates.</p>
+                            </div>
+                            <button onclick="app.requestPushPermission()" class="bg-campaign-blue text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-800 transition">Enable Alerts</button>
+                        </div>
+
+                        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
+                            <form onsubmit="event.preventDefault(); app.saveProfile()" class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="block text-sm font-medium mb-1">First Name</label><input type="text" id="prof-fname" value="${UI.escapeHtml(appState.profile?.firstName)}" class="w-full border rounded-lg px-4 py-2 outline-none focus:border-campaign-blue"></div>
+                                    <div><label class="block text-sm font-medium mb-1">Last Name</label><input type="text" id="prof-lname" value="${UI.escapeHtml(appState.profile?.lastName)}" class="w-full border rounded-lg px-4 py-2 outline-none focus:border-campaign-blue"></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="block text-sm font-medium mb-1">City</label><input type="text" id="prof-city" value="${UI.escapeHtml(appState.profile?.city || '')}" class="w-full border rounded-lg px-4 py-2 outline-none focus:border-campaign-blue"></div>
+                                    <div><label class="block text-sm font-medium mb-1">Phone</label><input type="text" id="prof-phone" value="${UI.escapeHtml(appState.profile?.phone || '')}" class="w-full border rounded-lg px-4 py-2 outline-none focus:border-campaign-blue"></div>
+                                </div>
+                                <div><label class="block text-sm font-medium mb-1">Bio</label><textarea id="prof-bio" rows="3" class="w-full border rounded-lg px-4 py-2 outline-none focus:border-campaign-blue">${UI.escapeHtml(appState.profile?.bio || '')}</textarea></div>
+                                <div class="pt-4 flex justify-end"><button type="submit" id="prof-save-btn" class="bg-campaign-blue text-white px-6 py-2 rounded-lg font-medium shadow-sm">Save Profile</button></div>
+                            </form>
+                        </div>
+                        <div class="bg-red-50 rounded-2xl p-6 border border-red-100"><h3 class="font-bold text-red-800 mb-2">Danger Zone</h3><p class="text-sm text-red-600 mb-4">Permanently delete your account and all associated data.</p><button onclick="app.confirmDeleteAccount()" class="border-2 border-red-200 text-red-600 hover:bg-red-600 hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition">Delete Account</button></div>
+                    </div>
+                `,
+                admin: () => `
+                    <div class="max-w-6xl mx-auto fade-in h-full flex flex-col">
+                        <header class="mb-6 shrink-0"><h2 class="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2"><i class="ph-fill ph-shield-check text-campaign-blue"></i> Admin Console</h2></header>
+                        <div class="flex overflow-x-auto gap-2 mb-6 border-b border-gray-200 shrink-0 pb-2 custom-scrollbar">
+                            <button onclick="app.adminTab('overview')" id="tab-overview" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm bg-blue-50 text-campaign-blue">Overview</button>
+                            <button onclick="app.adminTab('volunteers')" id="tab-volunteers" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Volunteers</button>
+                            <button onclick="app.adminTab('tools')" id="tab-tools" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Credentials</button>
+                            <button onclick="app.adminTab('announcements')" id="tab-announcements" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Updates</button>
+                            <button onclick="app.adminTab('opportunities')" id="tab-opportunities" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Shifts</button>
+                        </div>
+                        <div id="admin-content" class="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-[500px]"></div>
+                    </div>
+                `
+            },
+
+            controllers: {
+                dashboard: async () => {
+                    const alertsDiv = document.getElementById('dash-alerts');
+                    const statsDiv = document.getElementById('dash-stats');
+                    const shiftsDiv = document.getElementById('dash-my-shifts');
+                    const annDiv = document.getElementById('dash-latest-announcement');
+                    
+                    try {
+                        let alertHtml = '';
+                        let toolsCount = 0;
+                        let myShiftsCount = 0;
+                        let availableShiftsCount = 0;
+
+                        const qTools = query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid));
+                        const snapTools = await getDocs(qTools);
+                        toolsCount = snapTools.size;
+
+                        if(snapTools.empty) {
+                            alertHtml += `<div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex gap-3 text-sm"><i class="ph-fill ph-clock text-campaign-blue text-2xl shrink-0"></i><div><p class="font-bold text-campaign-blue mb-1">Credentials Pending</p><p class="text-gray-600 leading-relaxed">Your campaign tools are being set up. Check back later.</p></div></div>`;
+                        } else {
+                            alertHtml += `<div class="bg-green-50 border border-green-100 p-4 rounded-xl flex gap-3 text-sm cursor-pointer hover:shadow-md transition" onclick="app.navigate('tools')"><i class="ph-fill ph-check-circle text-green-600 text-2xl shrink-0"></i><div><p class="font-bold text-green-700 mb-1">Tools Ready</p><p class="text-gray-600 leading-relaxed">You have ${toolsCount} campaign tool(s) assigned and ready.</p></div></div>`;
+                        }
+
+                        const qOpps = query(collection(db, "opportunities"), orderBy("date", "asc"));
+                        const snapOpps = await getDocs(qOpps);
+                        const myShifts = [];
+                        
+                        for (const d of snapOpps.docs) {
+                            const data = d.data();
+                            try {
+                                const suSnap = await getDoc(doc(db, "opportunities", d.id, "signups", auth.currentUser.uid));
+                                suSnap.exists() ? myShifts.push({ id: d.id, ...data }) : availableShiftsCount++;
+                            } catch(e) {}
+                        }
+                        myShiftsCount = myShifts.length;
+
+                        if (availableShiftsCount > 0) {
+                            alertHtml += `<div class="bg-yellow-50 border border-yellow-100 p-4 rounded-xl flex gap-3 text-sm mt-3 cursor-pointer hover:shadow-md transition" onclick="app.navigate('opportunities')"><i class="ph-fill ph-star text-yellow-600 text-2xl shrink-0"></i><div><p class="font-bold text-yellow-700 mb-1">New Opportunities</p><p class="text-gray-600 leading-relaxed">${availableShiftsCount} open volunteer shifts available.</p></div></div>`;
+                        }
+
+                        if(alertsDiv) alertsDiv.innerHTML = alertHtml || '<div class="p-6 text-center bg-gray-50 rounded-xl border border-dashed"><p class="text-sm text-gray-500 font-medium">You are all caught up!</p></div>';
+
+                        if (myShiftsCount > 0) {
+                            shiftsDiv.innerHTML = myShifts.slice(0, 3).map(shift => `
+                                <div class="p-3 border rounded-xl hover:bg-gray-50 cursor-pointer flex justify-between items-center" onclick="app.navigate('opportunities')">
+                                    <div><p class="font-bold text-gray-900 text-sm">${UI.escapeHtml(shift.title)}</p><p class="text-xs text-gray-500"><i class="ph ph-calendar-blank"></i> ${UI.escapeHtml(shift.date)} • ${UI.escapeHtml(shift.time)}</p></div>
+                                    <i class="ph ph-caret-right text-gray-400"></i>
+                                </div>
+                            `).join('') + (myShiftsCount > 3 ? `<div class="text-center pt-2"><button onclick="app.navigate('opportunities')" class="text-xs font-bold text-campaign-blue hover:underline">+ ${myShiftsCount - 3} more</button></div>` : '');
+                        } else {
+                            shiftsDiv.innerHTML = '<div class="p-6 text-center bg-gray-50 rounded-xl border border-dashed"><i class="ph ph-calendar-x text-3xl text-gray-300 mb-2"></i><p class="text-sm text-gray-500">No upcoming shifts.</p><button onclick="app.navigate(\'opportunities\')" class="mt-3 text-sm font-bold text-campaign-blue">Find a shift</button></div>';
+                        }
+
+                        if(statsDiv) statsDiv.innerHTML = `
+                            <div class="bg-white rounded-2xl p-4 shadow-sm border flex flex-col items-center justify-center text-center"><span class="text-3xl font-black text-campaign-blue leading-none mb-1">${myShiftsCount}</span><span class="text-[10px] text-gray-500 font-bold uppercase">My Shifts</span></div>
+                            <div class="bg-white rounded-2xl p-4 shadow-sm border flex flex-col items-center justify-center text-center"><span class="text-3xl font-black text-campaign-teal leading-none mb-1">${availableShiftsCount}</span><span class="text-[10px] text-gray-500 font-bold uppercase">Open Shifts</span></div>
+                            <div class="bg-white rounded-2xl p-4 shadow-sm border flex flex-col items-center justify-center text-center"><span class="text-3xl font-black text-campaign-yellow leading-none mb-1">${toolsCount}</span><span class="text-[10px] text-gray-500 font-bold uppercase">Active Tools</span></div>
+                            <div class="bg-white rounded-2xl p-4 shadow-sm border flex flex-col items-center justify-center text-center"><span class="text-3xl font-black text-gray-800 leading-none mb-1"><i class="ph-fill ph-hands-clapping"></i></span><span class="text-[10px] text-gray-500 font-bold uppercase">Status: Ready</span></div>
+                        `;
+                    } catch (e) { if(alertsDiv) alertsDiv.innerHTML = '<div class="p-4 bg-red-50 text-red-600 text-sm rounded-xl">Error loading dashboard data.</div>'; }
+                    
+                    try {
+                        const snapAnn = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc")));
+                        if(!snapAnn.empty) {
+                            const data = snapAnn.docs[0].data();
+                            const dateStr = data.createdAt ? new Date(data.createdAt.toDate()).toLocaleDateString() : 'Recent';
+                            if(annDiv) annDiv.innerHTML = `
+                                <div class="cursor-pointer group" onclick="app.navigate('announcements')">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-2 block flex items-center gap-1"><i class="ph ph-calendar"></i> ${dateStr}</span>
+                                    <h4 class="font-bold text-lg text-white group-hover:text-campaign-yellow transition mb-2 leading-tight">${UI.escapeHtml(data.title)}</h4>
+                                    <p class="text-sm text-blue-100 mt-1 line-clamp-3 leading-relaxed">${UI.escapeHtml(data.body)}</p>
+                                </div>
+                            `;
+                        } else {
+                            if(annDiv) annDiv.innerHTML = '<p class="text-sm text-blue-200">No recent updates.</p>';
+                        }
+                    } catch(e) { if(annDiv) annDiv.innerHTML = '<p class="text-red-200">Error loading update.</p>'; }
+                },
+                
+                announcements: async () => {
+                    UI.showLoading('announcements-list');
+                    try {
+                        const snap = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc")));
+                        if(snap.empty) { UI.showEmpty('announcements-list', 'No announcements yet.'); return; }
+                        
+                        let anns = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                        anns.sort((a, b) => {
+                            if (a.pinned && !b.pinned) return -1;
+                            if (!a.pinned && b.pinned) return 1;
+                            return 0;
+                        });
+
+                        document.getElementById('announcements-list').innerHTML = anns.map(data => {
+                            const date = data.createdAt ? new Date(data.createdAt.toDate()).toLocaleDateString() : 'Recent';
+                            return `
+                            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 relative">
+                                ${data.pinned ? '<div class="absolute top-0 right-0 bg-campaign-yellow text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl"><i class="ph-fill ph-push-pin"></i> Pinned</div>' : ''}
+                                <h3 class="font-bold text-xl text-gray-800 mb-1 pr-12">${UI.escapeHtml(data.title)}</h3>
+                                <p class="text-xs text-gray-500 mb-4"><i class="ph ph-calendar"></i> ${date} ${data.author ? `• by ${UI.escapeHtml(data.author)}` : ''}</p>
+                                ${data.imageUrl ? `<img src="${UI.escapeHtml(data.imageUrl)}" onerror="this.style.display='none'" class="w-full h-48 object-cover rounded-lg mb-4 bg-gray-100">` : ''}
+                                <p class="text-gray-700 whitespace-pre-line">${UI.escapeHtml(data.body)}</p>
+                                <div class="mt-6 pt-4 border-t border-gray-100">
+                                    <h4 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1"><i class="ph ph-chat-circle text-campaign-blue text-lg"></i> Comments</h4>
+                                    <div id="comments-${data.id}" class="space-y-3 mb-4 text-sm max-h-60 overflow-y-auto pr-2 custom-scrollbar"><div class="spinner w-3 h-3 mx-auto"></div></div>
+                                    <form onsubmit="event.preventDefault(); app.postComment('${data.id}')" class="flex gap-2">
+                                        <input type="text" id="comment-input-${data.id}" placeholder="Add a comment..." required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-campaign-blue">
+                                        <button type="submit" id="comment-btn-${data.id}" class="bg-campaign-blue text-white px-4 py-2 rounded-lg text-sm font-medium">Post</button>
+                                    </form>
+                                </div>
+                            </div>
+                        `}).join('');
+                        anns.forEach(data => app.loadAnnouncementComments(data.id));
+                    } catch(e) { document.getElementById('announcements-list').innerHTML = `<p class="text-red-500">Error loading updates.</p>`; }
+                },
+
+                opportunities: async () => {
+                    UI.showLoading('opps-list');
+                    try {
+                        const snap = await getDocs(query(collection(db, "opportunities"), orderBy("date", "asc")));
+                        if(snap.empty) { UI.showEmpty('opps-list', 'No upcoming shifts.'); return; }
+                        const container = document.getElementById('opps-list');
+                        container.innerHTML = '';
+                        
+                        for (const d of snap.docs) {
+                            const data = d.data();
+                            let signedUp = false;
+                            try {
+                                const suSnap = await getDoc(doc(db, "opportunities", d.id, "signups", auth.currentUser.uid));
+                                signedUp = suSnap.exists();
+                            } catch(e) {}
+                            
+                            const div = document.createElement('div');
+                            div.className = "bg-white p-5 rounded-2xl shadow-sm border flex flex-col justify-between";
+                            div.innerHTML = `
+                                <div>
+                                    <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-gray-900">${UI.escapeHtml(data.title)}</h3>${signedUp ? '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">Attending</span>' : ''}</div>
+                                    <p class="text-sm text-gray-600 mb-3 line-clamp-2">${UI.escapeHtml(data.description)}</p>
+                                    <div class="space-y-1 text-xs text-gray-500 mb-4"><p><i class="ph ph-calendar-blank text-campaign-blue"></i> ${UI.escapeHtml(data.date)} • ${UI.escapeHtml(data.time)}</p><p><i class="ph ph-map-pin text-campaign-blue"></i> ${UI.escapeHtml(data.location)}</p></div>
+                                </div>
+                                <button onclick="app.toggleSignup('${d.id}', ${signedUp})" class="w-full py-2.5 rounded-lg text-sm font-bold transition border ${signedUp ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-transparent bg-campaign-blue text-white hover:bg-blue-800'}">${signedUp ? 'Cancel Signup' : 'Sign Up for Shift'}</button>
+                            `;
+                            container.appendChild(div);
+                        }
+                    } catch(e) { document.getElementById('opps-list').innerHTML = `<p class="text-red-500">Error loading shifts.</p>`; }
+                },
+
+                directory: async () => {
+                    UI.showLoading('directory-grid');
+                    try {
+                        // Remove orderBy to prevent needing a Composite Index immediately, sort locally instead
+                        const q = query(collection(db, "users"), where("status", "==", "active"));
+                        const snap = await getDocs(q);
+                        let users = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                        users.sort((a,b) => (a.firstName || '').localeCompare(b.firstName || '')); // Local alphabetize
+                        appState.users = users;
+                        app.renderDirectory(users);
+                    } catch(e) {
+                        console.error(e);
+                        document.getElementById('directory-grid').innerHTML = `<p class="text-red-500">Error loading community directory.</p>`;
+                    }
+                },
+
+                tools: async () => {
+                    UI.showLoading('tools-list');
+                    try {
+                        const toolsSnap = await getDocs(collection(db, "campaignTools"));
+                        const toolsMap = {};
+                        toolsSnap.docs.forEach(d => toolsMap[d.id] = d.data());
+
+                        const snap = await getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)));
+                        if(snap.empty) { UI.showEmpty('tools-list', 'Your credentials are being prepared.', 'ph-clock-countdown'); return; }
+                        
+                        let creds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        
+                        creds.sort((a, b) => {
+                            const tA = toolsMap[a.toolId] || { name: a.toolName || '' };
+                            const tB = toolsMap[b.toolId] || { name: b.toolName || '' };
+                            const isMoValA = tA.name.match(/MoValID/i) ? 1 : 0;
+                            const isMoValB = tB.name.match(/MoValID/i) ? 1 : 0;
+                            return isMoValB - isMoValA;
+                        });
+
+                        document.getElementById('tools-list').innerHTML = creds.map(data => {
+                            const passId = `pass-${data.id}`;
+                            const tool = toolsMap[data.toolId] || { name: data.toolName || 'Unknown Tool', url: data.loginUrl || '', instructions: data.instructions || '' };
+                            const isMoValID = !!tool.name.match(/MoValID/i);
+                            
+                            return `
+                            <div class="${isMoValID ? 'bg-gradient-to-b from-blue-50 to-white p-1 rounded-2xl shadow-md border-2 border-campaign-blue md:col-span-2' : 'bg-white p-5 rounded-2xl shadow-sm border border-gray-100'}">
+                                ${isMoValID ? `<div class="bg-campaign-blue text-white text-xs font-bold px-4 py-2 uppercase tracking-wider flex justify-center items-center gap-2 rounded-t-xl mb-4"><i class="ph-fill ph-key"></i> Primary Single Sign-On (SSO)</div>` : ''}
+                                <div class="${isMoValID ? 'px-4 pb-4 md:px-6 md:pb-6' : ''}">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <h3 class="font-bold text-gray-900 ${isMoValID ? 'text-xl' : ''}">${UI.escapeHtml(tool.name)}</h3>
+                                        ${isMoValID ? '<i class="ph-fill ph-star text-campaign-yellow text-3xl"></i>' : ''}
+                                    </div>
+                                    ${isMoValID ? `<p class="text-sm text-gray-700 mb-5 leading-relaxed bg-yellow-50 p-3 rounded-lg border border-yellow-100"><b>Important:</b> This is your Master Account. MoValID acts as your Single Sign-On (SSO) and is required to automatically log you into several other integrated campaign applications.</p>` : ''}
+                                    ${tool.instructions ? `
+                                    <div class="mb-4 bg-blue-50/50 p-3 rounded-xl border border-blue-100">
+                                        <h4 class="text-[10px] uppercase font-bold text-campaign-blue mb-1 flex items-center gap-1"><i class="ph-fill ph-info"></i> Instructions</h4>
+                                        <p class="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">${UI.escapeHtml(tool.instructions)}</p>
+                                    </div>
+                                    ` : ''}
+                                    <div class="space-y-3">
+                                        <div><label class="text-[10px] uppercase font-bold text-gray-400 block mb-1">Username / Email</label><div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2"><span class="text-sm font-medium text-gray-800">${UI.escapeHtml(data.username)}</span><button onclick="app.copyText('${UI.escapeHtml(data.username)}')" class="text-campaign-blue p-1"><i class="ph ph-copy"></i></button></div></div>
+                                        <div><label class="text-[10px] uppercase font-bold text-gray-400 block mb-1">Password</label><div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2"><span class="text-sm font-mono text-gray-800" id="${passId}">••••••••</span><div class="flex gap-1"><button onclick="app.toggleMask('${passId}', '${UI.escapeHtml(data.password)}')" class="text-gray-500 p-1"><i class="ph ph-eye"></i></button><button onclick="app.copyText('${UI.escapeHtml(data.password)}')" class="text-campaign-blue p-1"><i class="ph ph-copy"></i></button></div></div></div>
+                                    </div>
+                                    ${tool.url ? `<a href="${UI.escapeHtml(tool.url)}" target="_blank" class="mt-4 flex items-center justify-center gap-2 w-full text-center ${isMoValID ? 'bg-campaign-blue text-white hover:bg-blue-800 py-3' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 py-2'} rounded-lg text-sm font-bold transition">${isMoValID ? 'Go to MoValID Login <i class="ph-bold ph-arrow-right"></i>' : 'Open Tool <i class="ph ph-arrow-square-out"></i>'}</a>` : ''}
+                                </div>
+                            </div>
+                        `}).join('');
+                    } catch(e) { document.getElementById('tools-list').innerHTML = `<p class="text-red-500">Error loading tools.</p>`; }
+                },
+
+                notifications: async () => {
+                    UI.showLoading('notifications-list');
+                    try {
+                        const notifs = [];
+                        
+                        // Push Alerts
+                        const alertSnap = await getDocs(query(collection(db, "pushAlerts"), orderBy("createdAt", "desc"), limit(10)));
+                        alertSnap.docs.forEach(d => {
+                            const data = d.data();
+                            if(data.createdAt) {
+                                notifs.push({
+                                    id: d.id, icon: 'ph-bell-ringing', bgClass: 'bg-red-50', textClass: 'text-red-600',
+                                    title: 'Campaign Alert', message: data.message,
+                                    timestamp: data.createdAt.toMillis(),
+                                    dateStr: new Date(data.createdAt.toMillis()).toLocaleDateString(),
+                                    link: 'notifications'
+                                });
+                            }
+                        });
+
+                        // Recent Announcements
+                        const annSnap = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(10)));
+                        annSnap.docs.forEach(d => {
+                            const data = d.data();
+                            if(data.createdAt) {
+                                notifs.push({
+                                    id: d.id, icon: 'ph-megaphone', bgClass: 'bg-blue-50', textClass: 'text-campaign-blue',
+                                    title: 'New Update Posted', message: data.title,
+                                    timestamp: data.createdAt.toMillis(),
+                                    dateStr: new Date(data.createdAt.toMillis()).toLocaleDateString(),
+                                    link: 'announcements'
+                                });
+                            }
+                        });
+
+                        // Recent Opportunities
+                        const oppSnap = await getDocs(query(collection(db, "opportunities"), orderBy("createdAt", "desc"), limit(10)));
+                        oppSnap.docs.forEach(d => {
+                            const data = d.data();
+                            if(data.createdAt) {
+                                notifs.push({
+                                    id: d.id, icon: 'ph-calendar-star', bgClass: 'bg-teal-50', textClass: 'text-campaign-teal',
+                                    title: 'New Volunteer Shift', message: `${data.title} on ${data.date}`,
+                                    timestamp: data.createdAt.toMillis(),
+                                    dateStr: new Date(data.createdAt.toMillis()).toLocaleDateString(),
+                                    link: 'opportunities'
+                                });
+                            }
+                        });
+
+                        // New Credentials
+                        const credSnap = await getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)));
+                        credSnap.docs.forEach(d => {
+                            const data = d.data();
+                            if(data.createdAt) {
+                                notifs.push({
+                                    id: d.id, icon: 'ph-key', bgClass: 'bg-yellow-50', textClass: 'text-campaign-yellow',
+                                    title: 'Tool Access Granted', message: 'An admin has provisioned new tool credentials for you.',
+                                    timestamp: data.createdAt.toMillis(),
+                                    dateStr: new Date(data.createdAt.toMillis()).toLocaleDateString(),
+                                    link: 'tools'
+                                });
+                            }
+                        });
+
+                        notifs.sort((a,b) => b.timestamp - a.timestamp);
+                        
+                        const container = document.getElementById('notifications-list');
+                        if(notifs.length === 0) {
+                            UI.showEmpty('notifications-list', 'You are all caught up!', 'ph-bell-slash');
+                            return;
+                        }
+
+                        container.innerHTML = notifs.slice(0, 15).map(n => `
+                            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-start gap-4 cursor-pointer hover:shadow-md transition" onclick="app.navigate('${n.link}')">
+                                <div class="w-10 h-10 rounded-full ${n.bgClass} ${n.textClass} flex items-center justify-center text-xl shrink-0">
+                                    <i class="ph-fill ${n.icon}"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <h4 class="font-bold text-gray-900 text-sm">${UI.escapeHtml(n.title)}</h4>
+                                        <span class="text-[10px] text-gray-400 font-medium whitespace-nowrap ml-2">${n.dateStr}</span>
+                                    </div>
+                                    <p class="text-sm text-gray-600">${UI.escapeHtml(n.message)}</p>
+                                </div>
+                                <i class="ph ph-caret-right text-gray-300 self-center"></i>
+                            </div>
+                        `).join('');
+
+                    } catch(e) {
+                        console.error(e);
+                        document.getElementById('notifications-list').innerHTML = '<p class="text-red-500 p-4">Error loading inbox.</p>';
+                    }
+                },
+
+                admin: () => { app.adminTab('overview'); },
+                profile: () => {}
+            },
+
+            requestPushPermission: async () => {
+                if (!("Notification" in window)) {
+                    UI.toast("This browser does not support push notifications.", "error");
+                    return;
+                }
+                if (Notification.permission === "granted") {
+                    await app.setupFCMToken();
+                    UI.toast("Notifications are enabled and token refreshed!", "info");
+                    return;
+                }
+                try {
+                    const permission = await Notification.requestPermission();
+                    if (permission === "granted") {
+                        await app.setupFCMToken();
+                        UI.toast("Push notifications enabled successfully.");
+                    } else {
+                        UI.toast("Permission denied. You can enable this in your browser settings.", "error");
+                    }
+                } catch(e) {
+                    console.error(e);
+                }
+            },
+
+            loadAnnouncementComments: async (annId) => {
+                const commentsDiv = document.getElementById(`comments-${annId}`);
+                if(!commentsDiv) return;
+                try {
+                    const snap = await getDocs(query(collection(db, "announcements", annId, "comments"), orderBy("timestamp", "asc")));
+                    if(snap.empty) { commentsDiv.innerHTML = '<p class="text-gray-400 text-xs italic">No comments yet. Be the first!</p>'; return; }
+                    commentsDiv.innerHTML = snap.docs.map(c => {
+                        const data = c.data();
+                        const date = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleDateString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Just now';
+                        const canDelete = data.authorId === auth.currentUser.uid || appState.isAdmin;
+                        return `
+                            <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="font-bold text-gray-800 text-xs">${UI.escapeHtml(data.authorName)} ${data.authorId === auth.currentUser.uid ? '<span class="bg-blue-100 text-campaign-blue px-1.5 py-0.5 rounded text-[9px] uppercase ml-1">You</span>' : ''}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] text-gray-400">${date}</span>
+                                        ${canDelete ? `<button onclick="app.deleteComment('${annId}', '${c.id}')" class="text-gray-300 hover:text-red-500 transition" title="Delete comment"><i class="ph-bold ph-trash"></i></button>` : ''}
+                                    </div>
+                                </div>
+                                <p class="text-gray-700 text-sm whitespace-pre-wrap">${UI.escapeHtml(data.text)}</p>
+                            </div>
+                        `;
+                    }).join('');
+                    commentsDiv.scrollTop = commentsDiv.scrollHeight;
+                } catch(e) { commentsDiv.innerHTML = '<p class="text-red-400 text-xs">Error loading comments.</p>'; }
+            },
+            
+            postComment: async (annId) => {
+                const input = document.getElementById(`comment-input-${annId}`);
+                const btn = document.getElementById(`comment-btn-${annId}`);
+                const text = input.value.trim();
+                if(!text) return;
+                
+                input.disabled = true; btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>';
+                try {
+                    await addDoc(collection(db, "announcements", annId, "comments"), {
+                        authorId: auth.currentUser.uid, authorName: `${appState.profile.firstName} ${appState.profile.lastName}`,
+                        text: text, timestamp: serverTimestamp()
+                    });
+                    input.value = ''; app.loadAnnouncementComments(annId);
+                } catch(e) { 
+                    console.error("Comment error:", e);
+                    UI.toast('Error posting comment. (Check Security Rules)', 'error'); 
+                }
+                input.disabled = false; btn.disabled = false; btn.innerHTML = 'Post';
+            },
+
+            deleteComment: (annId, commentId) => {
+                UI.confirm("Delete Comment", "Are you sure you want to delete this comment?", "Delete", true, async () => {
+                    try {
+                        await deleteDoc(doc(db, "announcements", annId, "comments", commentId));
+                        UI.toast('Comment deleted.');
+                        app.loadAnnouncementComments(annId);
+                    } catch(e) {
+                        console.error(e);
+                        UI.toast('Error deleting comment.', 'error');
+                    }
+                });
+            },
+
+            toggleSignup: async (oppId, isSignedUp) => {
+                try {
+                    const docRef = doc(db, "opportunities", oppId, "signups", auth.currentUser.uid);
+                    if (isSignedUp) { await deleteDoc(docRef); UI.toast('Signup cancelled.'); } 
+                    else { await setDoc(docRef, { name: `${appState.profile.firstName} ${appState.profile.lastName}`, timestamp: serverTimestamp() }); UI.toast('Signed up successfully!'); }
+                    app.controllers.opportunities();
+                } catch(e) { UI.toast('Error updating signup.', 'error'); }
+            },
+
+            renderDirectory: (users) => {
+                const grid = document.getElementById('directory-grid');
+                if(!users.length) { UI.showEmpty('directory-grid', 'No volunteers found.'); return; }
+                grid.innerHTML = users.map(u => {
+                    const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                    return `
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer hover:shadow-md transition" onclick="app.viewProfile('${u.id}')">
+                        <div class="w-12 h-12 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center font-bold text-lg shrink-0">${init}</div>
+                        <div class="min-w-0"><h3 class="font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h3><p class="text-xs text-gray-500 truncate"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Unknown')}</p></div>
+                    </div>`
+                }).join('');
+            },
+
+            filterDirectory: (term) => {
+                const t = term.toLowerCase();
+                const filtered = appState.users.filter(u => (u.firstName?.toLowerCase().includes(t)) || (u.lastName?.toLowerCase().includes(t)) || (u.city?.toLowerCase().includes(t)));
+                app.renderDirectory(filtered);
+            },
+
+            viewProfile: (uid) => {
+                const u = appState.users.find(x => x.id === uid); if(!u) return;
+                const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                UI.openModal(`
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-xl">
+                        <div class="bg-campaign-blue p-6 text-white flex items-center gap-4 relative">
+                            <button onclick="UI.closeModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center"><i class="ph-bold ph-x"></i></button>
+                            <div class="w-16 h-16 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-3xl shrink-0">${init}</div>
+                            <div><h2 class="text-2xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2><p class="opacity-80 text-sm"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Location N/A')}</p></div>
+                        </div>
+                        <div class="p-6"><h4 class="text-xs uppercase font-bold text-gray-400 mb-2">About</h4><p class="text-gray-700 text-sm whitespace-pre-wrap">${UI.escapeHtml(u.bio || 'No bio added.')}</p>
+                        ${appState.isAdmin ? `<div class="mt-6 pt-4 border-t flex gap-2"><button onclick="app.adminViewProfile('${uid}')" class="text-xs font-bold text-campaign-blue bg-blue-50 px-3 py-1 rounded">Open in Admin Console</button></div>` : ''}</div>
+                    </div>
+                `);
+            },
+
+            saveProfile: async () => {
+                const btn = document.getElementById('prof-save-btn'); btn.disabled = true; btn.innerText = 'Saving...';
+                try {
+                    const data = { 
+                        firstName: document.getElementById('prof-fname').value.trim(), 
+                        lastName: document.getElementById('prof-lname').value.trim(), 
+                        city: document.getElementById('prof-city').value.trim(), 
+                        phone: document.getElementById('prof-phone').value.trim(), 
+                        bio: document.getElementById('prof-bio').value.trim() 
+                    };
+                    
+                    await updateDoc(doc(db, "users", auth.currentUser.uid), data); 
+                    appState.profile = {...appState.profile, ...data}; 
+                    
+                    const init = data.firstName ? data.firstName.charAt(0).toUpperCase() : '?';
+                    const avatarD = document.getElementById('user-avatar-desktop');
+                    const avatarM = document.getElementById('user-avatar-mobile');
+                    const nameD = document.getElementById('user-name-desktop');
+                    
+                    if(avatarD) avatarD.innerText = init;
+                    if(avatarM) avatarM.innerText = init;
+                    if(nameD) nameD.innerText = `${data.firstName} ${data.lastName}`;
+                    
+                    UI.toast('Profile saved successfully.');
+                } catch(e) { 
+                    console.error(e);
+                    UI.toast('Error saving profile.', 'error'); 
+                }
+                btn.disabled = false; btn.innerText = 'Save Profile';
+            },
+
+            confirmDeleteAccount: () => {
+                UI.confirm("Delete Account", "Permanently delete your account and all data? This cannot be reversed.", "Delete Forever", true, async () => {
+                    try { await deleteDoc(doc(db, "users", auth.currentUser.uid)); await auth.currentUser.delete(); UI.toast('Account deleted.'); } 
+                    catch(e) { UI.toast('Requires recent login. Please sign out, sign in, and try again.', 'error'); }
+                });
+            },
+
+            toggleMask: (id, text) => { const el = document.getElementById(id); el.innerText = el.innerText === '••••••••' ? text : '••••••••'; },
+            copyText: (text) => navigator.clipboard.writeText(text).then(() => UI.toast('Copied!')).catch(() => UI.toast('Failed', 'error')),
+
+            adminTab: (tabId) => {
+                document.querySelectorAll('.admin-tab').forEach(el => { el.classList.remove('bg-blue-50', 'text-campaign-blue'); el.classList.add('text-gray-600'); });
+                const active = document.getElementById(`tab-${tabId}`); if(active) { active.classList.add('bg-blue-50', 'text-campaign-blue'); active.classList.remove('text-gray-600'); }
+                const content = document.getElementById('admin-content'); UI.showLoading('admin-content');
+                setTimeout(() => {
+                    if(tabId === 'overview') app.renderAdminOverview(content);
+                    if(tabId === 'volunteers') app.renderAdminVolunteers(content);
+                    if(tabId === 'tools') app.renderAdminTools(content);
+                    if(tabId === 'announcements') app.renderAdminAnnouncements(content);
+                    if(tabId === 'opportunities') app.renderAdminOpportunities(content);
+                }, 100);
+            },
+
+            renderAdminOverview: async (container) => {
+                try {
+                    const userSnap = await getDocs(query(collection(db, "users")));
+                    const users = userSnap.docs.map(d => ({id: d.id, ...d.data()}));
+                    const totalUsers = users.length;
+                    const admins = users.filter(u => u.role === 'admin').length;
+                    
+                    const recentUsers = [...users].sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)).slice(0, 4);
+                    
+                    const oppSnap = await getDocs(query(collection(db, "opportunities")));
+                    const credSnap = await getDocs(query(collection(db, "userCredentials")));
+                    
+                    let recentHtml = recentUsers.map(u => `
+                        <div class="flex items-center justify-between p-3 border-b last:border-0 hover:bg-gray-50 transition cursor-pointer" onclick="app.adminViewProfile('${u.id}')">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-xs shrink-0">${u.firstName ? u.firstName.charAt(0).toUpperCase() : '?'}</div>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</p>
+                                    <p class="text-[10px] text-gray-500 mt-0.5">${u.createdAt ? new Date(u.createdAt.toDate()).toLocaleDateString() : 'Recent'}</p>
+                                </div>
+                            </div>
+                            <i class="ph ph-caret-right text-gray-400"></i>
+                        </div>
+                    `).join('');
+
+                    container.innerHTML = `
+                        <div class="p-6 h-full flex flex-col bg-gray-50/50">
+                            <h3 class="font-bold text-xl text-gray-900 mb-6 flex items-center gap-2"><i class="ph-fill ph-chart-pie-slice text-campaign-blue"></i> Platform Overview</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 shrink-0">
+                                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-users text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Volunteers</span><span class="text-4xl font-black text-campaign-blue relative z-10">${totalUsers}</span></div>
+                                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-shield-check text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Admins</span><span class="text-4xl font-black text-campaign-teal relative z-10">${admins}</span></div>
+                                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-calendar-check text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Total Shifts</span><span class="text-4xl font-black text-campaign-yellow relative z-10">${oppSnap.size}</span></div>
+                                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-key text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Tool Logins</span><span class="text-4xl font-black text-gray-700 relative z-10">${credSnap.size}</span></div>
+                            </div>
+                            <div class="grid md:grid-cols-2 gap-6 flex-1 min-h-0">
+                                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col min-h-0"><div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0 rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-clock-counter-clockwise text-campaign-blue text-lg"></i> Newest Volunteers</h4><button onclick="app.adminTab('volunteers')" class="text-xs font-bold text-campaign-blue hover:underline">View All</button></div><div class="p-2 overflow-y-auto flex-1">${recentHtml || '<p class="text-sm text-gray-500 p-4 text-center">No users.</p>'}</div></div>
+                                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col min-h-0">
+                                    <div class="p-4 border-b border-gray-100 bg-gray-50 shrink-0 rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-lightning text-campaign-yellow text-lg"></i> Quick Actions</h4></div>
+                                    <div class="p-5 grid grid-cols-2 gap-3 flex-1 overflow-hidden">
+                                        <button onclick="app.adminTab('announcements')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-megaphone text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Post Update</span></button>
+                                        <button onclick="app.adminTab('opportunities')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-calendar-plus text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Create Shift</span></button>
+                                        <button onclick="app.adminTab('tools')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-key text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Provision Tool</span></button>
+                                        <button onclick="app.adminTab('volunteers')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-users text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Manage Users</span></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading stats.</p>'; }
+            },
+
+            renderAdminVolunteers: async (container) => {
+                try {
+                    const snap = await getDocs(query(collection(db, "users"), orderBy("createdAt", "desc")));
+                    let rows = snap.docs.map(d => {
+                        const u = d.data(); const badge = u.role === 'admin' ? '<span class="bg-campaign-blue text-white text-[10px] px-2 py-0.5 rounded">ADMIN</span>' : '<span class="bg-gray-200 text-[10px] px-2 py-0.5 rounded">VOL</span>';
+                        return `<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="app.adminViewProfile('${d.id}')"><td class="p-3 text-sm">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</td><td class="p-3 text-sm">${UI.escapeHtml(u.email)}</td><td class="p-3">${badge}</td><td class="p-3 text-right"><button onclick="event.stopPropagation(); app.adminDeleteUser('${d.id}', '${UI.escapeHtml(u.email)}')" class="text-red-400 hover:text-red-600 p-1"><i class="ph-bold ph-trash"></i></button></td></tr>`;
+                    }).join('');
+                    container.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Name</th><th class="p-3">Email</th><th class="p-3">Role</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+                } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading volunteers.</p>'; }
+            },
+
+            adminViewProfile: async (uid, context = 'directory') => {
+                try {
+                    const snap = await getDoc(doc(db, "users", uid)); if(!snap.exists()) { UI.toast("Not found.", "error"); return; }
+                    const u = snap.data();
+                    let backBtn = `<button onclick="UI.closeModal()" class="w-full text-center py-2 text-sm text-gray-500 hover:bg-gray-100 rounded mt-4">Close</button>`;
+                    if(context === 'signups') backBtn = `<button onclick="document.getElementById('modal-back-trigger').click()" class="w-full text-center py-2 text-sm text-campaign-blue bg-blue-50 hover:bg-blue-100 font-bold rounded mt-4"><i class="ph ph-arrow-left"></i> Back to Signups</button>`;
+                    UI.openModal(`<div class="bg-white rounded-2xl overflow-hidden p-6"><div class="flex justify-between items-start mb-4"><h2 class="text-xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2><span class="bg-gray-200 text-xs px-2 py-1 rounded font-bold uppercase">${UI.escapeHtml(u.role)}</span></div><div class="space-y-3 text-sm"><p><strong>Email:</strong> ${UI.escapeHtml(u.email)}</p><p><strong>Phone:</strong> ${UI.escapeHtml(u.phone || 'N/A')}</p><p><strong>City:</strong> ${UI.escapeHtml(u.city || 'N/A')}</p><p><strong>Bio:</strong> ${UI.escapeHtml(u.bio || 'N/A')}</p></div>${backBtn}</div>`);
+                } catch(e) { UI.toast("Error loading profile", "error"); }
+            },
+
+            adminViewSignups: async (oppId, oppTitle) => {
+                UI.openModal(`<div class="bg-white p-8 rounded-xl text-center"><div class="spinner border-campaign-blue w-8 h-8 mx-auto"></div></div>`);
+                try {
+                    const snap = await getDocs(query(collection(db, "opportunities", oppId, "signups"), orderBy("timestamp", "asc")));
+                    let listHtml = snap.empty ? `<p class="text-gray-500 text-sm text-center py-4">No signups yet.</p>` : snap.docs.map(d => `<div class="flex justify-between items-center p-3 border-b hover:bg-gray-50 cursor-pointer rounded" onclick="app.adminViewProfile('${d.id}', 'signups')"><span class="font-bold text-sm">${UI.escapeHtml(d.data().name)}</span><span class="text-xs text-gray-400">${d.data().timestamp ? new Date(d.data().timestamp.toDate()).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Unknown'} <i class="ph ph-caret-right ml-1"></i></span></div>`).join('');
+                    UI.openModal(`<div class="bg-white rounded-2xl overflow-hidden shadow-xl flex flex-col max-h-[80vh]"><div class="p-4 bg-campaign-blue text-white flex justify-between items-center shrink-0"><h3 class="font-bold text-lg truncate pr-4">Signups: ${UI.escapeHtml(oppTitle)}</h3><button onclick="UI.closeModal()"><i class="ph-bold ph-x text-xl"></i></button></div><div class="p-4 overflow-y-auto flex-1">${listHtml}</div><button id="modal-back-trigger" class="hidden" onclick="app.adminViewSignups('${oppId}', '${UI.escapeHtml(oppTitle).replace(/'/g, "\\'")}')"></button></div>`);
+                } catch(e) { UI.toast("Error loading signups", "error"); UI.closeModal(); }
+            },
+
+            adminDeleteUser: (uid, email) => {
+                if(email === 'rylee.peak@rpeak.org') { UI.toast("Cannot delete primary admin.", "error"); return; }
+                UI.confirm("Remove User", `Remove ${email}? (Soft delete)`, "Remove", true, async () => {
+                    try { await updateDoc(doc(db, "users", uid), { status: 'deleted' }); UI.toast('Removed.'); app.adminTab('volunteers'); } 
+                    catch(e) { UI.toast('Error removing.', 'error'); }
+                });
+            },
+
+            renderAdminTools: async (container) => {
+                try {
+                    const uSnap = await getDocs(query(collection(db, "users"), where("status", "==", "active")));
+                    const users = uSnap.docs.map(d => ({id: d.id, name: d.data().firstName + ' ' + d.data().lastName})).sort((a,b) => a.name.localeCompare(b.name));
+                    let userOpts = users.map(u => `<option value="${u.id}">${UI.escapeHtml(u.name)}</option>`).join('');
+
+                    const tSnap = await getDocs(collection(db, "campaignTools"));
+                    const tools = tSnap.docs.map(d => ({id: d.id, ...d.data()}));
+                    let toolOpts = tools.map(t => `<option value="${t.id}">${UI.escapeHtml(t.name)}</option>`).join('');
+                    
+                    let toolsListHtml = tools.map(t => `<div class="border-b p-3 flex justify-between items-center hover:bg-gray-50"><div><p class="font-bold text-sm">${UI.escapeHtml(t.name)}</p><a href="${UI.escapeHtml(t.url || '#')}" target="_blank" class="text-xs text-campaign-blue">${UI.escapeHtml(t.url || 'No URL')}</a></div><button onclick="app.adminDeleteTool('${t.id}')" class="text-red-400 p-1"><i class="ph-bold ph-trash"></i></button></div>`).join('');
+
+                    const cSnap = await getDocs(collection(db, "userCredentials"));
+                    const groupedCreds = {};
+                    cSnap.docs.forEach(d => {
+                        const c = d.data();
+                        const userName = users.find(x => x.id === c.userId)?.name || c.username || 'Unknown User';
+                        if (!groupedCreds[userName]) groupedCreds[userName] = [];
+                        groupedCreds[userName].push({ id: d.id, ...c });
+                    });
+
+                    const sortedUsernames = Object.keys(groupedCreds).sort((a,b) => a.localeCompare(b));
+                    let credsHtml = sortedUsernames.length ? sortedUsernames.map(userName => {
+                        const items = groupedCreds[userName].map(c => {
+                            const toolName = tools.find(x => x.id === c.toolId)?.name || c.toolName || 'Unknown Tool';
+                            return `<div class="border-b last:border-b-0 p-3 flex justify-between items-center hover:bg-gray-50"><div><p class="font-bold text-sm text-gray-900">${UI.escapeHtml(toolName)}</p><p class="text-xs text-gray-500 font-mono">${UI.escapeHtml(c.username)}</p></div><button onclick="app.adminDeleteCred('${c.id}')" class="text-red-400 hover:text-red-600 p-1"><i class="ph-bold ph-trash"></i></button></div>`;
+                        }).join('');
+                        return `<div class="mb-4 border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white"><div class="bg-blue-50/50 p-2.5 border-b border-gray-200 flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-campaign-blue text-white flex items-center justify-center text-xs font-bold">${userName.charAt(0).toUpperCase()}</div><h4 class="font-bold text-sm text-gray-800">${UI.escapeHtml(userName)}</h4></div>${items}</div>`;
+                    }).join('') : '<div class="bg-white border rounded-lg p-4 text-sm text-gray-500">No credentials provisioned.</div>';
+
+                    container.innerHTML = `
+                        <div class="flex flex-col md:flex-row h-full">
+                            <div class="w-full md:w-1/2 border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto bg-gray-50">
+                                <h3 class="font-bold text-lg mb-4">1. Define Campaign Tool</h3>
+                                <form onsubmit="event.preventDefault(); app.adminCreateTool()" class="space-y-3 mb-8 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                    <div><label class="text-xs font-bold text-gray-500">Tool Name</label><input type="text" id="admin-tool-name" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Login URL</label><input type="url" id="admin-tool-url" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Global Instructions</label><textarea id="admin-tool-instructions" class="w-full border rounded p-2 text-sm"></textarea></div>
+                                    <button type="submit" id="admin-tool-btn" class="w-full bg-gray-800 text-white rounded p-2 font-bold text-sm hover:bg-black transition">Create Tool</button>
+                                </form>
+                                
+                                <h3 class="font-bold text-lg mb-4">2. Assign Credential</h3>
+                                <form onsubmit="event.preventDefault(); app.adminCreateCred()" class="space-y-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                    <div><label class="text-xs font-bold text-gray-500">Volunteer</label><select id="admin-cred-user" required class="w-full border rounded p-2 text-sm"><option value="">Select Volunteer...</option>${userOpts}</select></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Tool</label><select id="admin-cred-tool" required class="w-full border rounded p-2 text-sm"><option value="">Select Tool...</option>${toolOpts}</select></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Username / Email</label><input type="text" id="admin-cred-username" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Password</label><input type="text" id="admin-cred-password" required class="w-full border rounded p-2 text-sm"></div>
+                                    <button type="submit" id="admin-cred-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm hover:bg-blue-800 transition">Assign Credential</button>
+                                </form>
+                            </div>
+                            <div class="w-full md:w-1/2 p-4 overflow-y-auto space-y-6">
+                                <div><h3 class="font-bold text-lg mb-3">Active Tools</h3><div class="bg-white border rounded-lg">${toolsListHtml || '<p class="p-4 text-sm text-gray-500">No tools defined.</p>'}</div></div>
+                                <div><h3 class="font-bold text-lg mb-3">Provisioned Credentials</h3><div>${credsHtml}</div></div>
+                            </div>
+                        </div>
+                    `;
+                } catch(e) { container.innerHTML = '<p class="text-red-500 p-4">Error loading module.</p>'; }
+            },
+
+            adminCreateTool: async () => {
+                const btn = document.getElementById('admin-tool-btn'); btn.disabled = true; btn.innerText = 'Creating...';
+                try {
+                    await addDoc(collection(db, "campaignTools"), {
+                        name: document.getElementById('admin-tool-name').value.trim(),
+                        url: document.getElementById('admin-tool-url').value.trim(),
+                        instructions: document.getElementById('admin-tool-instructions').value.trim(),
+                        createdAt: serverTimestamp()
+                    });
+                    UI.toast("Tool created!"); app.adminTab('tools');
+                } catch(e) { UI.toast("Error saving tool.", "error"); btn.disabled=false; btn.innerText='Create Tool'; }
+            },
+
+            adminDeleteTool: (id) => UI.confirm("Delete Tool", "Remove this tool definition? (This does not delete assigned credentials automatically)", "Delete", true, async () => { await deleteDoc(doc(db, "campaignTools", id)); UI.toast("Deleted"); app.adminTab('tools'); }),
+
+            adminCreateCred: async () => {
+                const btn = document.getElementById('admin-cred-btn'); btn.disabled = true; btn.innerText = 'Assigning...';
+                try {
+                    await addDoc(collection(db, "userCredentials"), {
+                        userId: document.getElementById('admin-cred-user').value,
+                        toolId: document.getElementById('admin-cred-tool').value,
+                        username: document.getElementById('admin-cred-username').value.trim(),
+                        password: document.getElementById('admin-cred-password').value.trim(),
+                        createdAt: serverTimestamp()
+                    });
+                    UI.toast("Credential assigned!"); app.adminTab('tools');
+                } catch(e) { UI.toast("Error saving.", "error"); btn.disabled=false; btn.innerText='Assign Credential'; }
+            },
+            
+            adminDeleteCred: (id) => UI.confirm("Delete Credential", "Remove this tool access?", "Delete", true, async () => { await deleteDoc(doc(db, "userCredentials", id)); UI.toast("Deleted"); app.adminTab('tools'); }),
+
+            renderAdminAnnouncements: async (container) => {
+                try {
+                    const snap = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc")));
+                    let annsData = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    annsData.sort((a, b) => {
+                        if (a.pinned && !b.pinned) return -1;
+                        if (!a.pinned && b.pinned) return 1;
+                        return 0;
+                    });
+                    
+                    let anns = annsData.map(data => `<div class="border-b p-3 flex justify-between items-center hover:bg-gray-50"><div><p class="font-bold text-sm text-gray-900">${data.pinned ? '<i class="ph-fill ph-push-pin text-campaign-yellow"></i> ' : ''}${UI.escapeHtml(data.title)}</p></div><div class="flex items-center gap-2"><button onclick="app.adminToggleAnnouncementPin('${data.id}', ${!!data.pinned})" class="${data.pinned ? 'text-campaign-yellow' : 'text-gray-400 hover:text-campaign-yellow'} p-1 transition" title="${data.pinned ? 'Unpin' : 'Pin to top'}"><i class="${data.pinned ? 'ph-fill' : 'ph-bold'} ph-push-pin text-lg"></i></button><button onclick="app.adminDeleteAnnouncement('${data.id}')" class="text-red-400 hover:text-red-600 p-1"><i class="ph-bold ph-trash text-lg"></i></button></div></div>`).join('');
+
+                    container.innerHTML = `
+                        <div class="flex flex-col md:flex-row h-full">
+                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto bg-gray-50">
+                                <h3 class="font-bold text-lg mb-4">Post Update</h3>
+                                <form onsubmit="event.preventDefault(); app.adminCreateAnnouncement()" class="space-y-3 mb-8 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                    <div><label class="text-xs font-bold text-gray-500">Title</label><input type="text" id="admin-ann-title" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Body</label><textarea id="admin-ann-body" required rows="4" class="w-full border rounded p-2 text-sm"></textarea></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Image URL (Optional)</label><input type="url" id="admin-ann-img" class="w-full border rounded p-2 text-sm"></div>
+                                    <div class="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 mt-2">
+                                        <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" id="admin-ann-pinned" class="rounded border-gray-300 text-campaign-blue focus:ring-campaign-blue w-4 h-4"> Pin to top</label>
+                                    </div>
+                                    <button type="submit" id="admin-ann-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Post Announcement</button>
+                                </form>
+
+                                <h3 class="font-bold text-lg mb-4">Send Quick Alert</h3>
+                                <form onsubmit="event.preventDefault(); app.adminSendPushAlert()" class="space-y-3 bg-white p-4 rounded-xl border border-red-200 shadow-sm relative overflow-hidden">
+                                    <div class="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
+                                    <p class="text-xs text-gray-500 mb-2 leading-relaxed">Send a short push notification to all volunteers immediately. This will not create a full update post.</p>
+                                    <div><label class="text-xs font-bold text-gray-500">Message</label><textarea id="admin-push-msg" required rows="2" class="w-full border rounded p-2 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-200 outline-none transition"></textarea></div>
+                                    <button type="submit" id="admin-push-btn" class="w-full bg-red-600 text-white rounded p-2 font-bold text-sm hover:bg-red-700 transition shadow-sm flex justify-center items-center gap-2"><i class="ph-bold ph-bell-ringing"></i> Send Push Alert</button>
+                                </form>
+                            </div>
+                            <div class="w-full md:w-2/3 p-4 overflow-y-auto"><h3 class="font-bold text-lg mb-4">Past Announcements</h3><div class="bg-white border rounded-lg">${anns || '<p class="p-4 text-sm text-gray-500">No updates yet.</p>'}</div></div>
+                        </div>
+                    `;
+                } catch(e) { container.innerHTML = '<p class="text-red-500 p-4">Error loading module.</p>'; }
+            },
+
+            adminCreateAnnouncement: async () => {
+                const btn = document.getElementById('admin-ann-btn'); btn.disabled = true; btn.innerText = 'Posting...';
+                try {
+                    await addDoc(collection(db, "announcements"), {
+                        title: document.getElementById('admin-ann-title').value.trim(), body: document.getElementById('admin-ann-body').value.trim(),
+                        imageUrl: document.getElementById('admin-ann-img').value.trim() || null, pinned: document.getElementById('admin-ann-pinned').checked,
+                        author: appState.profile.firstName + ' ' + appState.profile.lastName, createdAt: serverTimestamp()
+                    });
+                    UI.toast("Posted!"); app.adminTab('announcements');
+                } catch(e) { UI.toast("Error posting.", "error"); btn.disabled=false; btn.innerText='Post Announcement'; }
+            },
+
+            adminSendPushAlert: async () => {
+                const btn = document.getElementById('admin-push-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>';
+                try {
+                    await addDoc(collection(db, "pushAlerts"), {
+                        message: document.getElementById('admin-push-msg').value.trim(),
+                        author: appState.profile.firstName + ' ' + appState.profile.lastName, 
+                        createdAt: serverTimestamp()
+                    });
+                    UI.toast("Push alert sent to all volunteers!"); 
+                    document.getElementById('admin-push-msg').value = '';
+                    btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert';
+                } catch(e) { UI.toast("Error sending alert.", "error"); btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; }
+            },
+
+            adminToggleAnnouncementPin: async (id, isPinned) => {
+                try {
+                    await updateDoc(doc(db, "announcements", id), { pinned: !isPinned });
+                    UI.toast(!isPinned ? "Pinned to top!" : "Unpinned.");
+                    app.adminTab('announcements');
+                } catch(e) { UI.toast("Error updating pin status.", "error"); }
+            },
+
+            adminDeleteAnnouncement: (id) => UI.confirm("Delete Update", "Remove this announcement?", "Delete", true, async () => { await deleteDoc(doc(db, "announcements", id)); UI.toast("Deleted"); app.adminTab('announcements'); }),
+
+            renderAdminOpportunities: async (container) => {
+                try {
+                    const snap = await getDocs(query(collection(db, "opportunities"), orderBy("date", "desc")));
+                    let rows = snap.docs.map(d => {
+                        const data = d.data();
+                        return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm font-bold">${UI.escapeHtml(data.title)}</td><td class="p-3 text-sm">${UI.escapeHtml(data.date)}</td><td class="p-3 text-right space-x-2"><button onclick="app.adminViewSignups('${d.id}', '${UI.escapeHtml(data.title).replace(/'/g, "\\'")}')" class="text-campaign-blue p-1 px-2 text-xs font-bold bg-blue-50 rounded">Signups</button><button onclick="app.adminDeleteOpp('${d.id}')" class="text-red-400 p-1"><i class="ph-bold ph-trash"></i></button></td></tr>`;
+                    }).join('');
+                    
+                    container.innerHTML = `
+                        <div class="flex flex-col md:flex-row h-full">
+                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto">
+                                <h3 class="font-bold text-lg mb-4">New Event/Shift</h3>
+                                <form onsubmit="event.preventDefault(); app.adminCreateOpp()" class="space-y-3">
+                                    <div><label class="text-xs font-bold text-gray-500">Event Title</label><input type="text" id="admin-opp-title" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div><label class="text-xs font-bold text-gray-500">Date</label><input type="date" id="admin-opp-date" required class="w-full border rounded p-2 text-sm"></div>
+                                        <div><label class="text-xs font-bold text-gray-500">Time</label><input type="text" id="admin-opp-time" placeholder="e.g. 10:00 AM" required class="w-full border rounded p-2 text-sm"></div>
+                                    </div>
+                                    <div><label class="text-xs font-bold text-gray-500">Location</label><input type="text" id="admin-opp-location" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Description</label><textarea id="admin-opp-desc" required rows="3" class="w-full border rounded p-2 text-sm"></textarea></div>
+                                    <button type="submit" id="admin-opp-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Create Event</button>
+                                </form>
+                            </div>
+                            <div class="w-full md:w-2/3 p-4 overflow-y-auto"><h3 class="font-bold text-lg mb-4">Manage Shifts</h3><div class="bg-white border rounded-lg overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Title</th><th class="p-3">Date</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="p-4 text-center text-gray-500">No shifts</td></tr>'}</tbody></table></div></div>
+                        </div>
+                    `;
+                } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading opportunities.</p>'; }
+            },
+
+            adminCreateOpp: async () => {
+                const btn = document.getElementById('admin-opp-btn'); btn.disabled = true; btn.innerText = 'Creating...';
+                try {
+                    await addDoc(collection(db, "opportunities"), {
+                        title: document.getElementById('admin-opp-title').value.trim(), date: document.getElementById('admin-opp-date').value,
+                        time: document.getElementById('admin-opp-time').value.trim(), location: document.getElementById('admin-opp-location').value.trim(),
+                        description: document.getElementById('admin-opp-desc').value.trim(), createdAt: serverTimestamp()
+                    });
+                    UI.toast("Event created!"); app.adminTab('opportunities');
+                } catch(e) { UI.toast("Error creating.", "error"); btn.disabled=false; btn.innerText='Create Event'; }
+            },
+            adminDeleteOpp: (oppId) => UI.confirm("Delete Shift", "Delete this volunteer shift?", "Delete", true, async () => { await deleteDoc(doc(db, "opportunities", oppId)); UI.toast("Deleted"); app.adminTab('opportunities'); })
+        };
+
+        window.app = app;
+        document.addEventListener('DOMContentLoaded', app.init);
+
+    </script>
+</body>
+</html>
