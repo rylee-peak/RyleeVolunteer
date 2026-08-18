@@ -132,6 +132,20 @@
         </div>
     </div>
 
+    <div id="notification-onboarding" class="hidden fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl transform transition-all">
+            <div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-campaign-blue">
+                <i class="ph-fill ph-bell-ringing text-4xl animate-bounce"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">Stay in the loop</h2>
+            <p class="text-gray-600 mb-8 leading-relaxed text-sm">Turn on notifications so we can send you urgent campaign updates and shift reminders.</p>
+            <div class="space-y-3">
+                <button onclick="app.resolveNotificationPrompt(true)" class="w-full bg-campaign-blue text-white rounded-xl px-4 py-3.5 font-bold hover:bg-blue-800 transition shadow-sm">Allow Notifications</button>
+                <button onclick="app.resolveNotificationPrompt(false)" class="w-full text-gray-500 font-medium hover:text-gray-800 transition py-2">Skip for now</button>
+            </div>
+        </div>
+    </div>
+
     <div id="main-app" class="hidden h-screen w-full flex flex-col md:flex-row bg-gray-50">
         
         <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-full flex-shrink-0 relative z-20">
@@ -319,6 +333,10 @@
                         document.getElementById('auth-page').classList.add('hidden');
                         document.getElementById('main-app').classList.remove('hidden');
                         app.navigate(appState.currentView);
+                        
+                        if ("Notification" in window && Notification.permission === "default") {
+                            document.getElementById('notification-onboarding').classList.remove('hidden');
+                        }
                     } else {
                         app.clearRealtimeListeners();
                         appState.user = null; appState.profile = null; appState.isAdmin = false;
@@ -507,6 +525,21 @@
                     appState.unsubscribes.forEach(unsub => unsub());
                     appState.unsubscribes = [];
                 }
+            },
+
+            resolveNotificationPrompt: async (accept) => {
+                if (accept) {
+                    try {
+                        const permission = await Notification.requestPermission();
+                        if (permission === "granted") {
+                            UI.toast("Push notifications enabled!");
+                            new Notification("Rylee Volunteer", { body: "You're all set to receive campaign alerts.", icon: "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV" });
+                        }
+                    } catch(e) {
+                        console.error("Notification permission error:", e);
+                    }
+                }
+                document.getElementById('notification-onboarding').classList.add('hidden');
             },
 
             buildNavigation: () => {
