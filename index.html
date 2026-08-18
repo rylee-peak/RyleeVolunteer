@@ -204,6 +204,7 @@
             updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, 
             addDoc, limit, onSnapshot
         } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAdrSGBDl4xlQhTw-LaD3YZUJnM2UmBiaU",
@@ -218,6 +219,15 @@
         const fbApp = initializeApp(firebaseConfig);
         const auth = getAuth(fbApp);
         const db = getFirestore(fbApp);
+        const messaging = typeof window !== 'undefined' && 'serviceWorker' in navigator ? getMessaging(fbApp) : null;
+
+        // Listen for foreground FCM messages
+        if (messaging) {
+            onMessage(messaging, (payload) => {
+                console.log('FCM Message received in foreground: ', payload);
+                // The realtime snapshot listener already handles the in-app Toast popups for these.
+            });
+        }
 
         const appState = { user: null, profile: null, isAdmin: false, currentView: 'dashboard', users: [], unsubscribes: [], loadTime: Date.now() };
 
@@ -316,69 +326,10 @@
             authMode: 'login',
 
             init: () => {
-                if(!app.isStandalone) {
-                    document.getElementById('landing-page').classList.remove('hidden');
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW Error:', e));
                 }
-                
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        appState.user = user;
-                        await app.loadUserProfile(user.uid);
-                        app.buildNavigation();
-                        app.updateUnreadBadge();
-                        app.setupRealtimeListeners();
-                        document.getElementById('global-loader').classList.add('opacity-0');
-                        setTimeout(() => document.getElementById('global-loader').classList.add('hidden'), 300);
-                        document.getElementById('landing-page').classList.add('hidden');
-                        document.getElementById('auth-page').classList.add('hidden');
-                        document.getElementById('main-app').classList.remove('hidden');
-                        app.navigate(appState.currentView);
-                        
-                        if ("Notification" in window && Notification.permission === "default") {
-                            document.getElementById('notification-onboarding').classList.remove('hidden');
-                        }
-                    } else {
-                        app.clearRealtimeListeners();
-                        appState.user = null; appState.profile = null; appState.isAdmin = false;
-                        document.getElementById('global-loader').classList.add('opacity-0');
-                        setTimeout(() => document.getElementById('global-loader').classList.add('hidden'), 300);
-                        document.getElementById('main-app').classList.add('hidden');
-                        if(app.isStandalone) app.showAuth('login');
-                    }
-                });
-            },
 
-            loadUserProfile: async (uid) => {
-                try {
-                    const docSnap = await getDoc(doc(db, "users", uid));
-                    if (docSnap.exists()) {
-                        appState.profile = docSnap.data();
-                        appState.isAdmin = appState.profile.role === 'admin' || auth.currentUser.email === 'rylee.peak@rpeak.org';
-                        const init = appState.profile.firstName ? appState.profile.firstName.charAt(0).toUpperCase() : '?';
-                        document.getElementById('user-avatar-desktop').innerText = init;
-                        document.getElementById('user-avatar-mobile').innerText = init;
-                        document.getElementById('user-name-desktop').innerText = `${appState.profile.firstName} ${appState.profile.lastName}`;
-                        document.getElementById('user-role-desktop').innerText = appState.isAdmin ? 'Administrator' : 'Volunteer';
-                    }
-                } catch (e) { UI.toast("Failed to load profile.", "error"); }
-            },
-
-            showAuth: (mode) => {
-                document.getElementById('landing-page').classList.add('hidden');
-                document.getElementById('auth-page').classList.remove('hidden');
-                app.authMode = mode;
-                const isLogin = mode === 'login';
-                document.getElementById('auth-title').innerText = isLogin ? 'Welcome Back' : 'Join the Campaign';
-                document.getElementById('auth-subtitle').innerText = isLogin ? 'Sign in to access your volunteer hub.' : 'Create your volunteer profile.';
-                document.getElementById('auth-btn').innerText = isLogin ? 'Sign In' : 'Register';
-                document.getElementById('auth-toggle-btn').innerText = isLogin ? 'Need an account? Register' : 'Already have an account? Sign In';
-                const names = document.getElementById('name-fields');
-                isLogin ? names.classList.add('hidden') : names.classList.remove('hidden');
-                document.getElementById('auth-fname').required = !isLogin;
-                document.getElementById('auth-lname').required = !isLogin;
-            },
-
-            closeAuth: () => {
                 if(!app.isStandalone) {
                     document.getElementById('auth-page').classList.add('hidden');
                     document.getElementById('landing-page').classList.remove('hidden');
@@ -488,14 +439,6 @@
                                 const displayTitle = title && title.length > 35 ? title.substring(0, 35) + '...' : title;
                                 UI.toast(`${msgPrefix}${displayTitle ? ': ' + displayTitle : ''}`, 'info');
                                 hasNew = true;
-
-                                // Native OS Push Notification if requested and enabled
-                                if (isPush && "Notification" in window && Notification.permission === "granted") {
-                                    new Notification("Rylee Volunteer Alert", { 
-                                        body: title, 
-                                        icon: "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV" 
-                                    });
-                                }
                             }
                         });
                         
@@ -527,13 +470,34 @@
                 }
             },
 
+            setupFCMToken: async () => {
+                if (!messaging) return;
+                try {
+                    // Wait for the unified service worker to be ready
+                    const registration = await navigator.serviceWorker.register('./sw.js');
+                    
+                    const vapidKey = "BGGIJRt1rLfyCPVoJK0ufqrdP3HcOHIwL-tHFDocbLxJz22TjDrdX8R_r_2aVqhHSiHmICNoa8vzoSkB0EKjDpI"; 
+                    
+                    const token = await getToken(messaging, { 
+                        vapidKey: vapidKey,
+                        serviceWorkerRegistration: registration 
+                    });
+                    
+                    if (token) {
+                        await updateDoc(doc(db, "users", auth.currentUser.uid), { fcmToken: token });
+                    }
+                } catch(e) {
+                    console.error("FCM setup failed:", e);
+                }
+            },
+
             resolveNotificationPrompt: async (accept) => {
                 if (accept) {
                     try {
                         const permission = await Notification.requestPermission();
                         if (permission === "granted") {
+                            await app.setupFCMToken();
                             UI.toast("Push notifications enabled!");
-                            new Notification("Rylee Volunteer", { body: "You're all set to receive campaign alerts.", icon: "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV" });
                         }
                     } catch(e) {
                         console.error("Notification permission error:", e);
@@ -1032,14 +996,15 @@
                     return;
                 }
                 if (Notification.permission === "granted") {
-                    UI.toast("Notifications are already enabled!", "info");
+                    await app.setupFCMToken();
+                    UI.toast("Notifications are enabled and token refreshed!", "info");
                     return;
                 }
                 try {
                     const permission = await Notification.requestPermission();
                     if (permission === "granted") {
+                        await app.setupFCMToken();
                         UI.toast("Push notifications enabled successfully.");
-                        new Notification("Rylee Volunteer", { body: "You will now receive high-priority campaign alerts.", icon: "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV" });
                     } else {
                         UI.toast("Permission denied. You can enable this in your browser settings.", "error");
                     }
