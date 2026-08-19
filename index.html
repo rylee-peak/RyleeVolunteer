@@ -136,7 +136,7 @@
         </div>
     </div>
 
-    <div id="main-app" class="hidden fixed inset-0 w-full h-full flex flex-col md:flex-row bg-gray-50 overflow-hidden">
+    <div id="main-app" class="hidden fixed inset-0 w-full h-[100dvh] flex flex-col md:flex-row bg-gray-50 overflow-hidden">
         
         <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-full flex-shrink-0 relative z-20">
             <div class="p-6 border-b border-gray-100 flex items-center gap-3">
@@ -565,7 +565,7 @@
                         
                         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                             <div class="flex items-center gap-4">
-                                <div class="w-14 h-14 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center text-3xl shrink-0"><i class="ph-fill ph-stopwatch"></i></div>
+                                <div class="w-14 h-14 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center text-3xl shrink-0"><i class="ph-fill ph-clock"></i></div>
                                 <div><h3 class="font-bold text-gray-800">Time Clock</h3><p class="text-sm text-gray-500" id="dash-clock-status">Ready to volunteer?</p><div id="dash-clock-display" class="text-2xl font-mono font-bold text-gray-900 hidden mt-0.5">00:00:00</div></div>
                             </div>
                             <div id="dash-clock-action"><button onclick="app.clockIn()" class="bg-campaign-teal text-white px-8 py-3 rounded-xl font-bold shadow-sm hover:bg-teal-600 transition flex items-center gap-2 w-full sm:w-auto justify-center"><i class="ph-bold ph-play"></i> Clock In</button></div>
@@ -591,7 +591,7 @@
                     </div>
                 `,
                 chat: () => `
-                    <div class="max-w-3xl mx-auto h-[calc(100vh-140px)] md:h-[calc(100vh-80px)] flex flex-col fade-in">
+                    <div class="max-w-3xl mx-auto h-[calc(100dvh-140px)] md:h-[calc(100dvh-80px)] flex flex-col fade-in">
                         <header class="mb-4 shrink-0">
                             <h2 class="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2"><i class="ph-fill ph-shooting-star text-campaign-yellow"></i> Scout</h2>
                             <p class="text-gray-500 text-sm">Your intelligent campaign trail companion.</p>
