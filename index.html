@@ -582,6 +582,18 @@
                             <div id="dash-clock-action"><button onclick="app.clockIn()" class="bg-campaign-teal text-white px-8 py-3 rounded-xl font-bold shadow-sm hover:bg-teal-600 transition flex items-center gap-2 w-full sm:w-auto justify-center"><i class="ph-bold ph-play"></i> Clock In</button></div>
                         </div>
 
+                        <!-- NEW KNOCK DOORS BANNER -->
+                        <div class="bg-gradient-to-r from-campaign-blue to-campaign-teal rounded-2xl p-6 shadow-md border border-blue-200 mb-6 flex justify-between items-center cursor-pointer hover:shadow-lg transition transform hover:-translate-y-1" onclick="app.navigate('canvass')">
+                            <div class="text-white">
+                                <h3 class="font-bold text-2xl mb-1 flex items-center gap-2"><i class="ph-fill ph-door"></i> Knock Doors</h3>
+                                <p class="text-blue-100 text-sm">Start canvassing in your current neighborhood.</p>
+                            </div>
+                            <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white text-2xl backdrop-blur-sm">
+                                <i class="ph-bold ph-arrow-right"></i>
+                            </div>
+                        </div>
+                        <!-- END KNOCK DOORS BANNER -->
+
                         <div class="grid md:grid-cols-3 gap-6 mb-8">
                             <div class="md:col-span-2 space-y-6">
                                 <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"><h3 class="font-bold text-gray-800 flex items-center gap-2 mb-4"><i class="ph-fill ph-check-circle text-campaign-teal text-xl"></i> Action Items</h3><div id="dash-alerts" class="space-y-3"><div class="spinner border-campaign-blue border-l-transparent w-6 h-6 mx-auto"></div></div></div>
@@ -706,6 +718,63 @@
                             <button onclick="app.adminTab('opportunities')" id="tab-opportunities" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Shifts</button>
                         </div>
                         <div id="admin-content" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden min-h-[500px]"></div>
+                    </div>
+                `,
+                
+                canvass: () => `
+                    <div class="max-w-2xl mx-auto fade-in pb-8">
+                        <header class="mb-6 flex items-center gap-3">
+                            <button onclick="app.navigate('dashboard')" class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-600 shadow-sm border border-gray-200 hover:bg-gray-50"><i class="ph-bold ph-arrow-left"></i></button>
+                            <div><h2 class="text-2xl font-bold text-gray-900 leading-none">Canvass Neighborhood</h2></div>
+                        </header>
+                        
+                        <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 shadow-sm">
+                            <h3 class="text-xs uppercase font-bold text-campaign-blue tracking-wider mb-2 flex items-center gap-1"><i class="ph-fill ph-chat-circle-text"></i> Your Script</h3>
+                            <p class="text-sm text-gray-800 leading-relaxed bg-white p-4 rounded-xl border border-blue-100 shadow-sm">"Hi! My name is <b>${UI.escapeHtml(appState.profile?.firstName)}</b>, and I'm a volunteer with Rylee Peak's campaign for Mayor of Moreno Valley. We're talking to neighbors today about local issues like government transparency and youth engagement. How are you feeling about the upcoming 2026 election?"</p>
+                        </div>
+
+                        <form id="canvass-form" onsubmit="event.preventDefault(); app.saveCanvassLog()" class="space-y-4">
+                            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="font-bold text-gray-900">1. Location Info</h3>
+                                    <button type="button" onclick="app.getLocation()" class="text-xs bg-campaign-blue text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm hover:bg-blue-800 transition"><i class="ph-bold ph-crosshair"></i> Get GPS</button>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3 mb-3">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-1">House #</label>
+                                        <input type="text" id="canvass-house" required class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-1">Street</label>
+                                        <input type="text" id="canvass-street" required class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">GPS Coordinates</label>
+                                    <input type="text" id="canvass-gps" readonly placeholder="Tap 'Get GPS' while standing at the door" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 outline-none">
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+                                <h3 class="font-bold text-gray-900 mb-4">2. Voter Response</h3>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">Support Level</label>
+                                <select id="canvass-support" required class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-4 outline-none focus:border-campaign-blue focus:ring-1 bg-white">
+                                    <option value="">Select Support Level...</option>
+                                    <option value="1">1 - Strong Supporter</option>
+                                    <option value="2">2 - Leaning Supporter</option>
+                                    <option value="3">3 - Undecided</option>
+                                    <option value="4">4 - Leaning Opponent</option>
+                                    <option value="5">5 - Strong Opponent</option>
+                                    <option value="Not Home">Not Home</option>
+                                    <option value="Refused">Refused to Answer</option>
+                                </select>
+
+                                <label class="block text-xs font-bold text-gray-500 mb-1">Top Issue / Notes</label>
+                                <textarea id="canvass-notes" rows="2" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1" placeholder="e.g. Worried about traffic, wants a yard sign..."></textarea>
+                            </div>
+
+                            <button type="submit" id="canvass-btn" class="w-full bg-campaign-teal text-white rounded-2xl py-4 font-bold text-lg shadow-sm hover:bg-teal-600 transition flex items-center justify-center gap-2"><i class="ph-bold ph-check-circle"></i> Save & Next Door</button>
+                        </form>
                     </div>
                 `
             },
@@ -1063,6 +1132,54 @@
                     } catch(e) { document.getElementById('notifications-list').innerHTML = '<p class="text-red-500 p-4">Error loading inbox.</p>'; }
                 },
                 admin: () => { app.adminTab('overview'); }, profile: () => {}
+            },
+
+            getLocation: () => {
+                const gpsInput = document.getElementById('canvass-gps');
+                if (!navigator.geolocation) { UI.toast("GPS not supported on this device", "error"); return; }
+                
+                gpsInput.value = "Locating...";
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => { gpsInput.value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`; },
+                    (err) => { gpsInput.value = ""; UI.toast("Could not get location. Ensure permissions are allowed.", "error"); },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            },
+
+            saveCanvassLog: async () => {
+                const btn = document.getElementById('canvass-btn');
+                btn.disabled = true; btn.innerHTML = '<div class="spinner w-5 h-5 border-t-transparent mx-auto"></div>';
+                
+                const house = document.getElementById('canvass-house').value.trim();
+                const street = document.getElementById('canvass-street').value.trim();
+                const gps = document.getElementById('canvass-gps').value.trim();
+                const support = document.getElementById('canvass-support').value;
+                const notes = document.getElementById('canvass-notes').value.trim();
+
+                try {
+                    // Firebase handles offline queuing natively. 
+                    // If offline, it saves locally and syncs when reconnected.
+                    await addDoc(collection(db, "canvass_logs"), {
+                        userId: auth.currentUser.uid,
+                        volunteerName: `${appState.profile.firstName} ${appState.profile.lastName}`,
+                        house: house, street: street, gps: gps,
+                        support: support, notes: notes,
+                        timestamp: serverTimestamp()
+                    });
+                    
+                    UI.toast(`Saved! Walk to the next door.`);
+                    
+                    // Clear specific fields for rapid entry, but keep Street and GPS
+                    document.getElementById('canvass-house').value = '';
+                    document.getElementById('canvass-support').value = '';
+                    document.getElementById('canvass-notes').value = '';
+                    
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } catch(e) {
+                    UI.toast('Saved locally! Will sync when connection returns.', 'info');
+                }
+                
+                btn.disabled = false; btn.innerHTML = '<i class="ph-bold ph-check-circle"></i> Save & Next Door';
             },
 
             clockIn: async () => {
