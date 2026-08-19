@@ -184,7 +184,7 @@
 
         if (messaging) onMessage(messaging, (payload) => console.log('FCM Message received in foreground'));
 
-        const appState = { user: null, profile: null, isAdmin: false, currentView: 'dashboard', users: [], unsubscribes: [], loadTime: Date.now() };
+        const appState = { user: null, profile: null, isAdmin: false, currentView: 'dashboard', users: [], unsubscribes: [], loadTime: Date.now(), sessionId: Math.random().toString(36).substring(2) };
 
         const UI = {
             escapeHtml: (unsafe) => {
@@ -666,9 +666,9 @@
                 },
 
                 chat: () => {
-                    // Start listening to the user's specific chat history
+                    // Start listening to the user's specific chat history for this active session ONLY
                     const chatBox = document.getElementById('chat-messages');
-                    const q = query(collection(db, "ai_chats"), where("userId", "==", auth.currentUser.uid), orderBy("timestamp", "asc"));
+                    const q = query(collection(db, "ai_chats"), where("userId", "==", auth.currentUser.uid), where("sessionId", "==", appState.sessionId));
                     
                     appState.chatUnsub = onSnapshot(q, (snapshot) => {
                         // Keep the initial greeting
@@ -682,8 +682,12 @@
                         let msgsHTML = '';
                         let isTyping = false;
 
-                        snapshot.forEach(d => {
-                            const data = d.data();
+                        // Sort the documents by timestamp on the client side to avoid needing a complex Firestore Index
+                        let docs = [];
+                        snapshot.forEach(d => docs.push(d.data()));
+                        docs.sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
+
+                        docs.forEach(data => {
                             // User Message
                             msgsHTML += `
                                 <div class="flex gap-3 max-w-[85%] self-end flex-row-reverse">
@@ -867,6 +871,7 @@
                 try {
                     await addDoc(collection(db, "ai_chats"), {
                         userId: auth.currentUser.uid,
+                        sessionId: appState.sessionId,
                         prompt: text,
                         status: 'pending',
                         timestamp: serverTimestamp()
