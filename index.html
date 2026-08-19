@@ -12,8 +12,29 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
+    <!-- Leaflet Map CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // PWA Email Deep Link Routing
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const source = urlParams.get('source');
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            
+            if (source === 'email' && !isStandalone) {
+                const isAndroid = /Android/i.test(navigator.userAgent);
+                if (isAndroid) {
+                    const currentUrl = window.location.href.split('?')[0]; 
+                    const intentUrl = `intent://${currentUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
+                    setTimeout(() => {}, 1500); // Wait 1.5s, if app doesn't open, stay on web page
+                    window.location.href = intentUrl;
+                } 
+            }
+        })();
+
         tailwind.config = {
             theme: {
                 extend: {
@@ -45,7 +66,6 @@
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         
-        /* Markdown Styles for Chat */
         .markdown-content p { margin-bottom: 0.5em; }
         .markdown-content p:last-child { margin-bottom: 0; }
         .markdown-content strong { font-weight: 700; }
@@ -53,6 +73,9 @@
         .markdown-content ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.5em; }
         .markdown-content li { margin-bottom: 0.25em; }
         .markdown-content a { color: #0047AB; text-decoration: underline; }
+        
+        /* Map Styles */
+        #canvass-map { height: 100%; width: 100%; border-radius: 1rem; z-index: 10; }
     </style>
 </head>
 <body class="text-gray-800 antialiased overflow-hidden">
@@ -136,7 +159,7 @@
         </div>
     </div>
 
-    <div id="main-app" class="hidden fixed inset-0 w-full h-[100dvh] flex flex-col md:flex-row bg-gray-50 overflow-hidden">
+    <div id="main-app" class="hidden fixed inset-0 w-full flex flex-col md:flex-row bg-gray-50 overflow-hidden" style="height: 100dvh;">
         
         <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-full flex-shrink-0 relative z-20">
             <div class="p-6 border-b border-gray-100 flex items-center gap-3">
@@ -159,7 +182,7 @@
             </div>
         </aside>
 
-        <main class="flex-1 h-full flex flex-col relative z-10 min-w-0">
+        <main class="flex-1 h-full flex flex-col relative z-10 min-w-0 bg-gray-50">
             <header class="md:hidden bg-white border-b border-gray-200 pt-[max(env(safe-area-inset-top),1rem)] pb-3 px-4 flex items-center justify-between flex-shrink-0 z-20 shadow-sm">
                 <div class="flex items-center gap-2 text-campaign-blue font-bold"><i class="ph-fill ph-hands-clapping text-xl"></i> RyleeVolunteer</div>
                 <div class="flex items-center gap-3">
@@ -171,7 +194,7 @@
                 </div>
             </header>
 
-            <div id="view-container" class="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8 relative scroll-smooth">
+            <div id="view-container" class="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8 relative scroll-smooth bg-gray-50">
                 <!-- Views injected here -->
             </div>
         </main>
@@ -206,7 +229,12 @@
 
         if (messaging) onMessage(messaging, (payload) => console.log('FCM Message received in foreground'));
 
-        const appState = { user: null, profile: null, isAdmin: false, currentView: 'dashboard', users: [], unsubscribes: [], loadTime: Date.now(), sessionId: Math.random().toString(36).substring(2), timeEntry: null, clockInterval: null };
+        const appState = { 
+            user: null, profile: null, isAdmin: false, currentView: 'dashboard', 
+            users: [], unsubscribes: [], loadTime: Date.now(), 
+            sessionId: Math.random().toString(36).substring(2), timeEntry: null, clockInterval: null,
+            canvassMap: null, canvassFormSchema: []
+        };
 
         const UI = {
             escapeHtml: (unsafe) => {
@@ -265,34 +293,6 @@
             authMode: 'login',
 
             init: () => {
-                // --- NEW: Smart Deep Link Routing ---
-                const urlParams = new URLSearchParams(window.location.search);
-                const source = urlParams.get('source');
-                
-                // If they came from an email but are NOT in the standalone app, try to force open the app
-                if (source === 'email' && !app.isStandalone) {
-                    const isAndroid = /Android/i.test(navigator.userAgent);
-                    
-                    if (isAndroid) {
-                        // Android Intent Fallback pattern
-                        // Tries to open the app natively. If it fails, they just stay on the website.
-                        const currentUrl = window.location.href.split('?')[0]; 
-                        const intentUrl = `intent://${currentUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
-                        
-                        // We set a brief timeout. If the intent fails, the timeout fires and we do nothing (they stay on the site).
-                        // If the intent succeeds, the browser goes to the background and the timeout is paused.
-                        setTimeout(() => {
-                            // Do nothing, let them use the website
-                            console.log("App not installed or deep link failed. Falling back to web view.");
-                        }, 1500);
-                        
-                        window.location.href = intentUrl;
-                    } 
-                    // iOS is highly restrictive about custom URI routing without a native Swift app, 
-                    // so on iOS, they will safely fall back to the Safari web app experience.
-                }
-                // --- END NEW ---
-
                 window.addEventListener('offline', () => {
                     const offlineBanner = document.createElement('div');
                     offlineBanner.id = 'offline-banner';
@@ -305,7 +305,11 @@
                     const banner = document.getElementById('offline-banner');
                     if(banner) banner.remove();
                     UI.toast("Back online! Connection restored.", "success");
+                    app.syncCanvassLogs(); // Sync logs instantly on reconnect
                 });
+
+                // Periodic Offline Canvassing Sync
+                setInterval(app.syncCanvassLogs, 15000);
 
                 const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
                 if ('serviceWorker' in navigator && isValidEnv) {
@@ -523,14 +527,14 @@
 
                 document.getElementById('desktop-nav').innerHTML = navItems.map(item => `
                     <a href="#" onclick="app.navigate('${item.id}')" id="nav-d-${item.id}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition text-sm font-medium mb-1">
-                        <i class="ph-fill ${item.icon} text-xl ${item.id === 'chat' ? 'text-campaign-yellow' : (item.id === 'leaderboard' ? 'text-orange-400' : 'text-gray-400')}"></i> ${item.label}
+                        <i class="ph-fill ${item.icon} text-xl ${item.id === 'chat' ? 'text-campaign-yellow' : 'text-gray-400'}"></i> ${item.label}
                     </a>
                 `).join('');
 
                 document.getElementById('mobile-nav').innerHTML = navItems.map(item => `
                     <a href="#" onclick="app.navigate('${item.id}')" id="nav-m-${item.id}" class="nav-item-mobile flex flex-col items-center gap-1 text-gray-500 py-2 flex-1 px-1 text-center transition">
-                        <i class="ph-fill ${item.icon} text-2xl ${item.id === 'chat' ? 'text-campaign-yellow opacity-90' : (item.id === 'leaderboard' ? 'text-orange-400 opacity-90' : 'text-gray-400')}"></i>
-                        <span class="text-[9px] font-bold uppercase tracking-wider ${item.id === 'chat' ? 'text-yellow-600' : (item.id === 'leaderboard' ? 'text-orange-600' : '')}">${item.label}</span>
+                        <i class="ph-fill ${item.icon} text-2xl ${item.id === 'chat' ? 'text-campaign-yellow opacity-90' : 'text-gray-400'}"></i>
+                        <span class="text-[9px] font-bold uppercase tracking-wider ${item.id === 'chat' ? 'text-yellow-600' : ''}">${item.label}</span>
                     </a>
                 `).join('');
             },
@@ -539,40 +543,43 @@
                 appState.currentView = viewId;
                 document.querySelectorAll('.nav-item, .nav-item-mobile').forEach(el => el.classList.remove('active'));
                 const dEl = document.getElementById(`nav-d-${viewId}`); const mEl = document.getElementById(`nav-m-${viewId}`);
-            if(dEl) dEl.classList.add('active'); if(mEl) mEl.classList.add('active');
+                if(dEl) dEl.classList.add('active'); if(mEl) mEl.classList.add('active');
 
-            if (viewId === 'notifications') {
-                appState.previousReadTime = appState.profile.lastNotificationReadTime || 0;
-                const now = Date.now(); appState.profile.lastNotificationReadTime = now;
-                updateDoc(doc(db, "users", auth.currentUser.uid), { lastNotificationReadTime: now }).catch(e=>{});
-                const bD = document.getElementById('badge-d-notifications'); const bM = document.getElementById('badge-m-notifications');
-                if (bD) bD.classList.add('hidden'); if (bM) bM.classList.add('hidden');
-            }
+                if (viewId === 'notifications') {
+                    appState.previousReadTime = appState.profile.lastNotificationReadTime || 0;
+                    const now = Date.now(); appState.profile.lastNotificationReadTime = now;
+                    updateDoc(doc(db, "users", auth.currentUser.uid), { lastNotificationReadTime: now }).catch(e=>{});
+                    const bD = document.getElementById('badge-d-notifications'); const bM = document.getElementById('badge-m-notifications');
+                    if (bD) bD.classList.add('hidden'); if (bM) bM.classList.add('hidden');
+                }
 
-            const container = document.getElementById('view-container');
-            
-            // --- Smart Scroll Lock for Scout AI ---
-            if (viewId === 'chat') {
-                container.classList.remove('overflow-y-auto', 'pb-32');
-                container.classList.add('overflow-hidden', 'pb-20', 'flex', 'flex-col');
-            } else {
-                container.classList.add('overflow-y-auto', 'pb-32');
-                container.classList.remove('overflow-hidden', 'pb-20', 'flex', 'flex-col');
-            }
-            
-            container.innerHTML = app.views[viewId]();
-            if(app.controllers[viewId]) app.controllers[viewId]();
-            container.scrollTo(0,0);
-        },
+                const container = document.getElementById('view-container');
+                
+                // Smart Scroll Lock for Scout AI
+                if (viewId === 'chat') {
+                    container.classList.remove('overflow-y-auto', 'pb-32', 'pb-8');
+                    container.classList.add('overflow-hidden', 'pb-20', 'flex', 'flex-col');
+                } else if(viewId === 'canvass') {
+                    // Specific full height sizing for Map View
+                    container.classList.remove('overflow-y-auto', 'pb-32', 'pb-8', 'p-4', 'md:p-8');
+                    container.classList.add('overflow-hidden', 'flex', 'flex-col', 'p-0');
+                } else {
+                    container.classList.add('overflow-y-auto', 'pb-32', 'md:pb-8', 'p-4', 'md:p-8');
+                    container.classList.remove('overflow-hidden', 'pb-20', 'flex', 'flex-col', 'p-0');
+                }
+                
+                container.innerHTML = app.views[viewId]();
+                if(app.controllers[viewId]) app.controllers[viewId]();
+                container.scrollTo(0,0);
+            },
 
-        views: {
+            views: {
                 dashboard: () => `
                     <div class="max-w-5xl mx-auto fade-in">
                         <header class="mb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
                             <div><h2 class="text-3xl font-bold text-gray-900 mb-1">Welcome back, ${UI.escapeHtml(appState.profile?.firstName)}! 👋</h2><p class="text-gray-500">Here's what's happening on the campaign trail today.</p></div>
                             <div class="flex gap-2"><button onclick="app.navigate('opportunities')" class="bg-campaign-blue text-white px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition shadow-sm text-sm flex items-center gap-2"><i class="ph ph-calendar-plus text-lg"></i> Find a Shift</button></div>
                         </header>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-stats"><div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col items-center justify-center h-24"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent"></div></div></div>
                         
                         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                             <div class="flex items-center gap-4">
@@ -582,7 +589,6 @@
                             <div id="dash-clock-action"><button onclick="app.clockIn()" class="bg-campaign-teal text-white px-8 py-3 rounded-xl font-bold shadow-sm hover:bg-teal-600 transition flex items-center gap-2 w-full sm:w-auto justify-center"><i class="ph-bold ph-play"></i> Clock In</button></div>
                         </div>
 
-                        <!-- NEW KNOCK DOORS BANNER -->
                         <div class="bg-gradient-to-r from-campaign-blue to-campaign-teal rounded-2xl p-6 shadow-md border border-blue-200 mb-6 flex justify-between items-center cursor-pointer hover:shadow-lg transition transform hover:-translate-y-1" onclick="app.navigate('canvass')">
                             <div class="text-white">
                                 <h3 class="font-bold text-2xl mb-1 flex items-center gap-2"><i class="ph-fill ph-door"></i> Knock Doors</h3>
@@ -592,7 +598,6 @@
                                 <i class="ph-bold ph-arrow-right"></i>
                             </div>
                         </div>
-                        <!-- END KNOCK DOORS BANNER -->
 
                         <div class="grid md:grid-cols-3 gap-6 mb-8">
                             <div class="md:col-span-2 space-y-6">
@@ -623,22 +628,18 @@
                     </div>
                 `,
                 leaderboard: () => `
-                    <div class="max-w-4xl mx-auto fade-in">
-                        <header class="mb-8 text-center">
+                    <div class="max-w-4xl mx-auto fade-in pb-8">
+                        <header class="mb-8 text-center mt-2">
                             <div class="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full text-orange-500 mb-4 shadow-sm border border-orange-200">
                                 <i class="ph-fill ph-trophy text-3xl"></i>
                             </div>
                             <h2 class="text-4xl font-extrabold text-gray-900 mb-2 tracking-tight">Campaign Heroes</h2>
-                            <p class="text-lg text-gray-500 max-w-xl mx-auto">Celebrating the incredible volunteers powering the Rylee for Mayor movement.</p>
+                            <p class="text-lg text-gray-500 max-w-xl mx-auto px-4">Celebrating the incredible volunteers powering the Rylee for Mayor movement.</p>
                         </header>
                         
-                        <!-- Top 3 Podium -->
-                        <div id="leaderboard-podium" class="flex flex-row items-end justify-center gap-2 sm:gap-4 md:gap-8 mb-10 md:mb-12 mt-4 hidden px-1">
-                            <!-- Populated by JS -->
-                        </div>
+                        <div id="leaderboard-podium" class="flex flex-row items-end justify-center gap-2 sm:gap-4 md:gap-8 mb-10 md:mb-12 mt-4 hidden px-2"></div>
 
-                        <!-- Full List -->
-                        <div class="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden mb-8">
                             <div class="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
                                 <h3 class="font-bold text-gray-700 uppercase tracking-wider text-xs">All Volunteers</h3>
                                 <span class="text-xs font-medium text-gray-500">Ranked by total hours</span>
@@ -650,7 +651,7 @@
                     </div>
                 `,
                 chat: () => `
-                    <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col min-h-0 fade-in">
+                    <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col min-h-0 fade-in pb-[env(safe-area-inset-bottom)] p-4 md:p-8">
                         <header class="mb-4 shrink-0 px-1">
                             <h2 class="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2"><i class="ph-fill ph-shooting-star text-campaign-yellow"></i> Scout</h2>
                             <p class="text-gray-500 text-sm">Your intelligent campaign trail companion.</p>
@@ -713,6 +714,7 @@
                         <div class="flex overflow-x-auto gap-2 mb-6 border-b border-gray-200 pb-2 custom-scrollbar">
                             <button onclick="app.adminTab('overview')" id="tab-overview" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm bg-blue-50 text-campaign-blue">Overview</button>
                             <button onclick="app.adminTab('volunteers')" id="tab-volunteers" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Volunteers</button>
+                            <button onclick="app.adminTab('canvass')" id="tab-canvass" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Canvassing</button>
                             <button onclick="app.adminTab('tools')" id="tab-tools" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Credentials</button>
                             <button onclick="app.adminTab('announcements')" id="tab-announcements" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Comms & Updates</button>
                             <button onclick="app.adminTab('opportunities')" id="tab-opportunities" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Shifts</button>
@@ -722,59 +724,63 @@
                 `,
                 
                 canvass: () => `
-                    <div class="max-w-2xl mx-auto fade-in pb-8">
-                        <header class="mb-6 flex items-center gap-3">
-                            <button onclick="app.navigate('dashboard')" class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-600 shadow-sm border border-gray-200 hover:bg-gray-50"><i class="ph-bold ph-arrow-left"></i></button>
-                            <div><h2 class="text-2xl font-bold text-gray-900 leading-none">Canvass Neighborhood</h2></div>
+                    <div class="flex flex-col h-full w-full bg-white relative">
+                        <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0 z-20 shadow-sm relative">
+                            <div class="flex items-center gap-3">
+                                <button onclick="app.navigate('dashboard')" class="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-gray-600 border border-gray-200 hover:bg-gray-100"><i class="ph-bold ph-arrow-left"></i></button>
+                                <div><h2 class="text-xl font-bold text-gray-900 leading-none">Canvass</h2></div>
+                            </div>
+                            <div class="flex bg-gray-100 p-1 rounded-lg">
+                                <button id="canvass-tab-map" onclick="app.toggleCanvassTab('map')" class="px-4 py-1.5 rounded-md text-sm font-bold bg-white text-campaign-blue shadow-sm">Map</button>
+                                <button id="canvass-tab-form" onclick="app.toggleCanvassTab('form')" class="px-4 py-1.5 rounded-md text-sm font-bold text-gray-500 hover:text-gray-900">Log Door</button>
+                            </div>
                         </header>
                         
-                        <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 shadow-sm">
-                            <h3 class="text-xs uppercase font-bold text-campaign-blue tracking-wider mb-2 flex items-center gap-1"><i class="ph-fill ph-chat-circle-text"></i> Your Script</h3>
-                            <p class="text-sm text-gray-800 leading-relaxed bg-white p-4 rounded-xl border border-blue-100 shadow-sm">"Hi! My name is <b>${UI.escapeHtml(appState.profile?.firstName)}</b>, and I'm a volunteer with Rylee Peak's campaign for Mayor of Moreno Valley. We're talking to neighbors today about local issues like government transparency and youth engagement. How are you feeling about the upcoming 2026 election?"</p>
+                        <!-- Map View -->
+                        <div id="canvass-view-map" class="flex-1 w-full relative">
+                            <div id="canvass-map"></div>
+                            <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[400]">
+                                <button onclick="app.toggleCanvassTab('form')" class="bg-campaign-teal text-white px-6 py-3 rounded-full font-bold shadow-lg hover:bg-teal-600 transition flex items-center gap-2">
+                                    <i class="ph-bold ph-door"></i> Log a Door Here
+                                </button>
+                            </div>
                         </div>
 
-                        <form id="canvass-form" onsubmit="event.preventDefault(); app.saveCanvassLog()" class="space-y-4">
-                            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h3 class="font-bold text-gray-900">1. Location Info</h3>
-                                    <button type="button" onclick="app.getLocation()" class="text-xs bg-campaign-blue text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm hover:bg-blue-800 transition"><i class="ph-bold ph-crosshair"></i> Get GPS</button>
+                        <!-- Form View -->
+                        <div id="canvass-view-form" class="hidden flex-1 w-full overflow-y-auto p-4 md:p-8 pb-32 bg-gray-50">
+                            <div class="max-w-2xl mx-auto">
+                                <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 shadow-sm">
+                                    <h3 class="text-xs uppercase font-bold text-campaign-blue tracking-wider mb-2 flex items-center gap-1"><i class="ph-fill ph-chat-circle-text"></i> Your Script</h3>
+                                    <p class="text-sm text-gray-800 leading-relaxed bg-white p-4 rounded-xl border border-blue-100 shadow-sm">"Hi! My name is <b>${UI.escapeHtml(appState.profile?.firstName)}</b>, and I'm a volunteer with Rylee Peak's campaign for Mayor of Moreno Valley. We're talking to neighbors today about local issues like government transparency and youth engagement. How are you feeling about the upcoming 2026 election?"</p>
                                 </div>
-                                <div class="grid grid-cols-2 gap-3 mb-3">
-                                    <div>
-                                        <label class="block text-xs font-bold text-gray-500 mb-1">House #</label>
-                                        <input type="text" id="canvass-house" required class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">
+
+                                <form id="canvass-form" onsubmit="event.preventDefault(); app.saveCanvassLog()" class="space-y-4">
+                                    <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+                                        <div class="flex justify-between items-center mb-4">
+                                            <h3 class="font-bold text-gray-900">Location Info</h3>
+                                            <button type="button" onclick="app.getLocation()" class="text-xs bg-campaign-blue text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm hover:bg-blue-800 transition"><i class="ph-bold ph-crosshair"></i> Get GPS</button>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="block text-xs font-bold text-gray-500 mb-1">Full Address (Auto-filled by GPS)</label>
+                                            <textarea id="canvass-address" required rows="2" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1 transition" placeholder="Tap 'Get GPS' to locate..." ></textarea>
+                                        </div>
+                                        <div class="hidden">
+                                            <input type="text" id="canvass-gps" readonly>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-gray-500 mb-1">Street</label>
-                                        <input type="text" id="canvass-street" required class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">
+
+                                    <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+                                        <h3 class="font-bold text-gray-900 mb-4">Voter Response</h3>
+                                        <div id="dynamic-canvass-form" class="space-y-4">
+                                            <div class="flex justify-center p-6"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent"></div></div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-bold text-gray-500 mb-1">GPS Coordinates</label>
-                                    <input type="text" id="canvass-gps" readonly placeholder="Tap 'Get GPS' while standing at the door" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 outline-none">
-                                </div>
+
+                                    <button type="submit" id="canvass-btn" class="w-full bg-campaign-teal text-white rounded-2xl py-4 font-bold text-lg shadow-sm hover:bg-teal-600 transition flex items-center justify-center gap-2"><i class="ph-bold ph-check-circle"></i> Save & Next Door</button>
+                                </form>
                             </div>
-
-                            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                                <h3 class="font-bold text-gray-900 mb-4">2. Voter Response</h3>
-                                <label class="block text-xs font-bold text-gray-500 mb-1">Support Level</label>
-                                <select id="canvass-support" required class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-4 outline-none focus:border-campaign-blue focus:ring-1 bg-white">
-                                    <option value="">Select Support Level...</option>
-                                    <option value="1">1 - Strong Supporter</option>
-                                    <option value="2">2 - Leaning Supporter</option>
-                                    <option value="3">3 - Undecided</option>
-                                    <option value="4">4 - Leaning Opponent</option>
-                                    <option value="5">5 - Strong Opponent</option>
-                                    <option value="Not Home">Not Home</option>
-                                    <option value="Refused">Refused to Answer</option>
-                                </select>
-
-                                <label class="block text-xs font-bold text-gray-500 mb-1">Top Issue / Notes</label>
-                                <textarea id="canvass-notes" rows="2" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1" placeholder="e.g. Worried about traffic, wants a yard sign..."></textarea>
-                            </div>
-
-                            <button type="submit" id="canvass-btn" class="w-full bg-campaign-teal text-white rounded-2xl py-4 font-bold text-lg shadow-sm hover:bg-teal-600 transition flex items-center justify-center gap-2"><i class="ph-bold ph-check-circle"></i> Save & Next Door</button>
-                        </form>
+                        </div>
                     </div>
                 `
             },
@@ -856,7 +862,6 @@
                         const snapUsers = await getDocs(query(collection(db, "users"), where("status", "==", "active")));
                         let users = snapUsers.docs.map(d => ({id: d.id, ...d.data()})).filter(u => (u.totalHours || 0) > 0);
                         
-                        // Sort descending by hours
                         users.sort((a, b) => (b.totalHours || 0) - (a.totalHours || 0));
 
                         if (users.length === 0) {
@@ -870,11 +875,8 @@
                         const podiumDiv = document.getElementById('leaderboard-podium');
                         const listDiv = document.getElementById('leaderboard-list');
 
-                        // 1. Render Top 3 Podium
                         if (top3.length > 0) {
                             podiumDiv.classList.remove('hidden');
-                            
-                            // Reorder for visual podium: 2nd, 1st, 3rd
                             const displayOrder = [];
                             if (top3[1]) displayOrder.push({ ...top3[1], rank: 2 });
                             displayOrder.push({ ...top3[0], rank: 1 });
@@ -907,7 +909,6 @@
                             podiumDiv.classList.add('hidden');
                         }
 
-                        // 2. Render Remaining List
                         listDiv.innerHTML = rest.length > 0 ? rest.map((u, index) => {
                             const rank = index + 4;
                             const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
@@ -938,12 +939,10 @@
                 },
 
                 chat: () => {
-                    // Start listening to the user's specific chat history for this active session ONLY
                     const chatBox = document.getElementById('chat-messages');
                     const q = query(collection(db, "ai_chats"), where("userId", "==", auth.currentUser.uid), where("sessionId", "==", appState.sessionId));
                     
                     appState.chatUnsub = onSnapshot(q, (snapshot) => {
-                        // Keep the initial greeting
                         const initialHTML = `
                             <div class="flex gap-3 max-w-[85%]">
                                 <div class="w-8 h-8 rounded-full bg-yellow-100 text-campaign-yellow flex items-center justify-center shrink-0"><i class="ph-fill ph-shooting-star"></i></div>
@@ -954,20 +953,17 @@
                         let msgsHTML = '';
                         let isTyping = false;
 
-                        // Sort the documents by timestamp on the client side to avoid needing a complex Firestore Index
                         let docs = [];
                         snapshot.forEach(d => docs.push(d.data()));
                         docs.sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
 
                         docs.forEach(data => {
-                            // User Message
                             msgsHTML += `
                                 <div class="flex gap-3 max-w-[85%] self-end flex-row-reverse">
                                     <div class="bg-campaign-yellow text-gray-900 font-medium p-3 rounded-2xl rounded-tr-none text-sm shadow-sm whitespace-pre-wrap">${UI.escapeHtml(data.prompt)}</div>
                                 </div>
                             `;
 
-                            // AI Response
                             if (data.status === 'completed') {
                                 const parsedResponse = marked.parse(data.response);
                                 msgsHTML += `
@@ -1002,7 +998,6 @@
                         }
 
                         chatBox.innerHTML = initialHTML + msgsHTML;
-                        // Scroll to bottom smoothly
                         setTimeout(() => chatBox.scrollTop = chatBox.scrollHeight, 50);
                     });
                 },
@@ -1119,7 +1114,11 @@
                         const unreadNotifs = notifs.filter(n => n.timestamp > lastRead);
                         
                         const container = document.getElementById('notifications-list');
-                        if(unreadNotifs.length === 0) { UI.showEmpty('notifications-list', "You're all caught up!", 'ph-confetti'); return; }
+                        
+                        if(unreadNotifs.length === 0) { 
+                            UI.showEmpty('notifications-list', "You're all caught up!", 'ph-confetti text-campaign-yellow'); 
+                            return; 
+                        }
 
                         container.innerHTML = unreadNotifs.slice(0, 15).map(n => `
                             <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-start gap-4 cursor-pointer hover:shadow-md transition" onclick="app.navigate('${n.link}')">
@@ -1131,18 +1130,154 @@
 
                     } catch(e) { document.getElementById('notifications-list').innerHTML = '<p class="text-red-500 p-4">Error loading inbox.</p>'; }
                 },
-                admin: () => { app.adminTab('overview'); }, profile: () => {}
+                admin: () => { app.adminTab('overview'); }, profile: () => {},
+                
+                canvass: async () => {
+                    // Fetch dynamic form structure from Firestore
+                    try {
+                        const formDoc = await getDoc(doc(db, "campaignSettings", "canvassForm"));
+                        if (formDoc.exists() && formDoc.data().fields) {
+                            appState.canvassFormSchema = formDoc.data().fields;
+                        } else {
+                            // Default fallback schema
+                            appState.canvassFormSchema = [
+                                { id: 'support_level', type: 'select', label: 'Support Level', required: true, options: ['1 - Strong Supporter', '2 - Leaning Supporter', '3 - Undecided', '4 - Leaning Opponent', '5 - Strong Opponent', 'Not Home', 'Refused'] },
+                                { id: 'top_issue', type: 'text', label: 'Top Issue', required: false },
+                                { id: 'notes', type: 'textarea', label: 'Additional Notes', required: false }
+                            ];
+                        }
+                    } catch(e) { console.error(e); }
+
+                    app.buildDynamicCanvassForm();
+                    app.toggleCanvassTab('map'); 
+                }
+            },
+
+            // --- CANVASSING LOGIC ---
+
+            toggleCanvassTab: (tab) => {
+                document.getElementById('canvass-tab-map').className = tab === 'map' ? 'px-4 py-1.5 rounded-md text-sm font-bold bg-white text-campaign-blue shadow-sm' : 'px-4 py-1.5 rounded-md text-sm font-bold text-gray-500 hover:text-gray-900';
+                document.getElementById('canvass-tab-form').className = tab === 'form' ? 'px-4 py-1.5 rounded-md text-sm font-bold bg-white text-campaign-blue shadow-sm' : 'px-4 py-1.5 rounded-md text-sm font-bold text-gray-500 hover:text-gray-900';
+                
+                if (tab === 'map') {
+                    document.getElementById('canvass-view-map').classList.remove('hidden');
+                    document.getElementById('canvass-view-form').classList.add('hidden');
+                    setTimeout(() => app.initCanvassMap(), 100);
+                } else {
+                    document.getElementById('canvass-view-map').classList.add('hidden');
+                    document.getElementById('canvass-view-form').classList.remove('hidden');
+                }
+            },
+
+            initCanvassMap: async () => {
+                if (appState.canvassMap) appState.canvassMap.invalidateSize();
+                else {
+                    appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 13); // Default Moreno Valley
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; OpenStreetMap contributors'
+                    }).addTo(appState.canvassMap);
+                }
+
+                // Fetch data from OptiPlex and plot pins
+                try {
+                    const response = await fetch('https://api.voterylee.com/api/canvass');
+                    if (response.ok) {
+                        const logs = await response.json();
+                        logs.forEach(log => {
+                            if (log.gps) {
+                                const [lat, lng] = log.gps.split(',').map(n => parseFloat(n.trim()));
+                                if (lat && lng) {
+                                    L.marker([lat, lng]).addTo(appState.canvassMap)
+                                      .bindPopup(`<b>${UI.escapeHtml(log.address)}</b><br><span class="text-xs text-gray-500">Logged by ${UI.escapeHtml(log.volunteer_name)}</span>`);
+                                }
+                            }
+                        });
+                        
+                        // Try to center map on user's current location automatically
+                        navigator.geolocation.getCurrentPosition(pos => {
+                            appState.canvassMap.setView([pos.coords.latitude, pos.coords.longitude], 16);
+                        }, () => {}, {timeout: 3000});
+                    }
+                } catch(e) { console.error("Could not fetch map points from OptiPlex", e); }
+            },
+
+            buildDynamicCanvassForm: () => {
+                const container = document.getElementById('dynamic-canvass-form');
+                if (!appState.canvassFormSchema || appState.canvassFormSchema.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-gray-500 italic">No questions configured.</p>';
+                    return;
+                }
+
+                let html = '';
+                appState.canvassFormSchema.forEach(field => {
+                    const requiredAttr = field.required ? 'required' : '';
+                    const reqAsterisk = field.required ? '<span class="text-red-500">*</span>' : '';
+                    
+                    html += `<div class="mb-4">
+                        <label class="block text-xs font-bold text-gray-500 mb-1">${UI.escapeHtml(field.label)} ${reqAsterisk}</label>`;
+                        
+                    switch(field.type) {
+                        case 'text':
+                        case 'email':
+                            html += `<input type="${field.type}" id="dyn_${field.id}" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">`;
+                            break;
+                        case 'textarea':
+                            html += `<textarea id="dyn_${field.id}" rows="2" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1"></textarea>`;
+                            break;
+                        case 'select':
+                            const options = (field.options || []).map(opt => `<option value="${UI.escapeHtml(opt)}">${UI.escapeHtml(opt)}</option>`).join('');
+                            html += `<select id="dyn_${field.id}" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1 bg-white">
+                                <option value="">Select...</option>${options}
+                            </select>`;
+                            break;
+                        case 'checkbox':
+                            html += `<label class="flex items-center gap-2 text-sm text-gray-800"><input type="checkbox" id="dyn_${field.id}" ${requiredAttr} class="w-4 h-4 text-campaign-blue rounded border-gray-300 focus:ring-campaign-blue"> Yes</label>`;
+                            break;
+                        case 'stars':
+                            html += `<input type="number" id="dyn_${field.id}" ${requiredAttr} min="1" max="5" placeholder="1-5" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">`;
+                            break;
+                    }
+                    html += `</div>`;
+                });
+                
+                container.innerHTML = html;
             },
 
             getLocation: () => {
+                const addressInput = document.getElementById('canvass-address');
                 const gpsInput = document.getElementById('canvass-gps');
                 if (!navigator.geolocation) { UI.toast("GPS not supported on this device", "error"); return; }
                 
-                gpsInput.value = "Locating...";
+                addressInput.value = "Locating nearby address...";
+                const btn = event.currentTarget;
+                const oldHTML = btn.innerHTML;
+                btn.innerHTML = '<div class="spinner w-3 h-3 border-white border-t-transparent"></div>';
+                
                 navigator.geolocation.getCurrentPosition(
-                    (pos) => { gpsInput.value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`; },
-                    (err) => { gpsInput.value = ""; UI.toast("Could not get location. Ensure permissions are allowed.", "error"); },
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                    async (pos) => { 
+                        const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+                        gpsInput.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`; 
+                        
+                        try {
+                            // Reverse Geocode using OpenStreetMap Nominatim
+                            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                            const data = await res.json();
+                            if (data && data.display_name) {
+                                addressInput.value = data.display_name;
+                            } else {
+                                addressInput.value = "Address not found. Please type manually.";
+                            }
+                        } catch(e) {
+                            addressInput.value = "Could not fetch street name. Please type manually.";
+                        }
+                        btn.innerHTML = oldHTML;
+                    },
+                    (err) => { 
+                        addressInput.value = ""; 
+                        UI.toast("Could not get location. Check permissions.", "error"); 
+                        btn.innerHTML = oldHTML;
+                    },
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
                 );
             },
 
@@ -1150,37 +1285,168 @@
                 const btn = document.getElementById('canvass-btn');
                 btn.disabled = true; btn.innerHTML = '<div class="spinner w-5 h-5 border-t-transparent mx-auto"></div>';
                 
-                const house = document.getElementById('canvass-house').value.trim();
-                const street = document.getElementById('canvass-street').value.trim();
+                const address = document.getElementById('canvass-address').value.trim();
                 const gps = document.getElementById('canvass-gps').value.trim();
-                const support = document.getElementById('canvass-support').value;
-                const notes = document.getElementById('canvass-notes').value.trim();
-
-                try {
-                    // Firebase handles offline queuing natively. 
-                    // If offline, it saves locally and syncs when reconnected.
-                    await addDoc(collection(db, "canvass_logs"), {
-                        userId: auth.currentUser.uid,
-                        volunteerName: `${appState.profile.firstName} ${appState.profile.lastName}`,
-                        house: house, street: street, gps: gps,
-                        support: support, notes: notes,
-                        timestamp: serverTimestamp()
-                    });
-                    
-                    UI.toast(`Saved! Walk to the next door.`);
-                    
-                    // Clear specific fields for rapid entry, but keep Street and GPS
-                    document.getElementById('canvass-house').value = '';
-                    document.getElementById('canvass-support').value = '';
-                    document.getElementById('canvass-notes').value = '';
-                    
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                } catch(e) {
-                    UI.toast('Saved locally! Will sync when connection returns.', 'info');
-                }
                 
+                // Gather dynamic responses
+                const responses = {};
+                appState.canvassFormSchema.forEach(field => {
+                    const el = document.getElementById(`dyn_${field.id}`);
+                    if (el) {
+                        responses[field.id] = field.type === 'checkbox' ? el.checked : el.value;
+                    }
+                });
+
+                const logData = {
+                    id: 'canvass_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    volunteerName: `${appState.profile.firstName} ${appState.profile.lastName}`,
+                    address: address, 
+                    gps: gps,
+                    responses: responses,
+                    timestamp: new Date().toISOString()
+                };
+
+                // Save to hidden LocalStorage "Waiting Room"
+                let pending = JSON.parse(localStorage.getItem('pendingCanvassLogs') || '[]');
+                pending.push(logData);
+                localStorage.setItem('pendingCanvassLogs', JSON.stringify(pending));
+                
+                UI.toast(`Saved locally! Attempting direct OptiPlex sync...`);
+                
+                // Clear inputs for the next door
+                document.getElementById('canvass-address').value = '';
+                appState.canvassFormSchema.forEach(field => {
+                    const el = document.getElementById(`dyn_${field.id}`);
+                    if (el) {
+                        if (field.type === 'checkbox') el.checked = false;
+                        else el.value = '';
+                    }
+                });
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
                 btn.disabled = false; btn.innerHTML = '<i class="ph-bold ph-check-circle"></i> Save & Next Door';
+
+                // Try to flush the waiting room immediately
+                app.syncCanvassLogs();
             },
+
+            syncCanvassLogs: async () => {
+                let pending = JSON.parse(localStorage.getItem('pendingCanvassLogs') || '[]');
+                if (pending.length === 0 || !navigator.onLine) return;
+
+                const stillPending = [];
+                // Direct to OptiPlex Web Server
+                const optiplexApiUrl = 'https://api.voterylee.com/api/canvass'; 
+
+                for (const log of pending) {
+                    try {
+                        const response = await fetch(optiplexApiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(log)
+                        });
+                        if (!response.ok) throw new Error('OptiPlex unreachable');
+                    } catch (e) {
+                        stillPending.push(log); // Keep it safe if it fails
+                    }
+                }
+
+                localStorage.setItem('pendingCanvassLogs', JSON.stringify(stillPending));
+                if (pending.length > stillPending.length && stillPending.length === 0) {
+                     UI.toast("Offline knocks synced securely to OptiPlex!", "success");
+                }
+            },
+
+            // --- ADMIN CANVASS FORM BUILDER ---
+
+            renderAdminCanvassFormBuilder: async (container) => {
+                UI.showLoading(container.id);
+                try {
+                    let fields = [];
+                    const formDoc = await getDoc(doc(db, "campaignSettings", "canvassForm"));
+                    if (formDoc.exists() && formDoc.data().fields) fields = formDoc.data().fields;
+
+                    let fieldsHtml = fields.length === 0 ? '<p class="text-sm text-gray-500 italic p-4 text-center">No fields added yet.</p>' : 
+                        fields.map((f, i) => `
+                        <div class="flex justify-between items-center p-3 border-b hover:bg-gray-50">
+                            <div>
+                                <span class="font-bold text-sm block">${UI.escapeHtml(f.label)} ${f.required ? '<span class="text-red-500">*</span>' : ''}</span>
+                                <span class="text-xs text-gray-500 uppercase tracking-wider">${f.type} ${f.options ? `(${f.options.length} options)` : ''}</span>
+                            </div>
+                            <button onclick="app.adminDeleteCanvassField(${i})" class="text-red-400 p-1 hover:text-red-600"><i class="ph-bold ph-trash"></i></button>
+                        </div>`).join('');
+
+                    container.innerHTML = `
+                        <div class="flex flex-col md:flex-row">
+                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 bg-gray-50">
+                                <h3 class="font-bold text-lg mb-4">Add Questionnaire Field</h3>
+                                <form onsubmit="event.preventDefault(); app.adminAddCanvassField()" class="space-y-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                    <div><label class="text-xs font-bold text-gray-500">Field Label (Question)</label><input type="text" id="admin-cf-label" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500">Input Type</label>
+                                        <select id="admin-cf-type" onchange="document.getElementById('admin-cf-options-div').style.display = this.value === 'select' ? 'block' : 'none'" required class="w-full border rounded p-2 text-sm bg-white">
+                                            <option value="text">Short Text</option>
+                                            <option value="textarea">Long Text (Paragraph)</option>
+                                            <option value="select">Dropdown Menu</option>
+                                            <option value="checkbox">Yes/No Checkbox</option>
+                                            <option value="stars">Star Rating (1-5)</option>
+                                            <option value="email">Email Address</option>
+                                        </select>
+                                    </div>
+                                    <div id="admin-cf-options-div" style="display:none;">
+                                        <label class="text-xs font-bold text-gray-500">Dropdown Options (Comma separated)</label>
+                                        <input type="text" id="admin-cf-options" placeholder="Option 1, Option 2, Option 3" class="w-full border rounded p-2 text-sm">
+                                    </div>
+                                    <div><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="admin-cf-req" class="rounded"> Required Field</label></div>
+                                    <button type="submit" id="admin-cf-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Add Field to Form</button>
+                                </form>
+                            </div>
+                            <div class="w-full md:w-2/3 p-4">
+                                <h3 class="font-bold text-lg mb-4">Current Mobile Questionnaire</h3>
+                                <div class="bg-white border rounded-lg overflow-hidden shadow-sm">${fieldsHtml}</div>
+                                <p class="text-xs text-gray-400 mt-4"><i class="ph-fill ph-info"></i> Changes made here instantly update the mobile app for all volunteers.</p>
+                            </div>
+                        </div>
+                    `;
+                    // Store locally so delete works
+                    appState.adminCanvassFields = fields;
+                } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading builder.</p>'; }
+            },
+
+            adminAddCanvassField: async () => {
+                const label = document.getElementById('admin-cf-label').value.trim();
+                const type = document.getElementById('admin-cf-type').value;
+                const req = document.getElementById('admin-cf-req').checked;
+                let options = [];
+                if (type === 'select') {
+                    options = document.getElementById('admin-cf-options').value.split(',').map(s => s.trim()).filter(s => s);
+                }
+
+                const newField = { id: 'field_' + Date.now(), label, type, required: req };
+                if (options.length > 0) newField.options = options;
+
+                const fields = [...(appState.adminCanvassFields || []), newField];
+                
+                try {
+                    await setDoc(doc(db, "campaignSettings", "canvassForm"), { fields });
+                    UI.toast("Field added!");
+                    app.adminTab('canvass');
+                } catch(e) { UI.toast("Error saving.", "error"); }
+            },
+
+            adminDeleteCanvassField: (index) => {
+                UI.confirm("Delete Field", "Remove this question from the app?", "Delete", true, async () => {
+                    const fields = [...appState.adminCanvassFields];
+                    fields.splice(index, 1);
+                    try {
+                        await setDoc(doc(db, "campaignSettings", "canvassForm"), { fields });
+                        UI.toast("Field removed!");
+                        app.adminTab('canvass');
+                    } catch(e) { UI.toast("Error deleting.", "error"); }
+                });
+            },
+
+            // --- END CANVASSING LOGIC ---
 
             clockIn: async () => {
                 const btn = document.querySelector('#dash-clock-action button'); if(btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner w-5 h-5 mx-auto border-t-transparent"></div>'; }
@@ -1318,6 +1584,7 @@
                 setTimeout(() => {
                     if(tabId === 'overview') app.renderAdminOverview(content);
                     if(tabId === 'volunteers') app.renderAdminVolunteers(content);
+                    if(tabId === 'canvass') app.renderAdminCanvassFormBuilder(content);
                     if(tabId === 'tools') app.renderAdminTools(content);
                     if(tabId === 'announcements') app.renderAdminAnnouncements(content);
                     if(tabId === 'opportunities') app.renderAdminOpportunities(content);
@@ -1473,19 +1740,17 @@
                     canvas.width = 1100; canvas.height = 850;
                     const ctx = canvas.getContext('2d');
 
-                    // 1. Background & Borders
                     ctx.fillStyle = '#f8fafc';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                     
-                    ctx.strokeStyle = '#0047AB'; // Campaign Blue
+                    ctx.strokeStyle = '#0047AB'; 
                     ctx.lineWidth = 15;
                     ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
                     
-                    ctx.strokeStyle = '#3CAEA3'; // Campaign Teal
+                    ctx.strokeStyle = '#3CAEA3'; 
                     ctx.lineWidth = 4;
                     ctx.strokeRect(45, 45, canvas.width - 90, canvas.height - 90);
 
-                    // 2. Headers
                     ctx.fillStyle = '#0047AB';
                     ctx.font = 'bold 48px Arial, sans-serif';
                     ctx.textAlign = 'center';
@@ -1496,33 +1761,27 @@
                     ctx.letterSpacing = '4px';
                     ctx.fillText('PROUDLY PRESENTED TO', canvas.width / 2, 230);
 
-                    // 3. Volunteer Name
                     ctx.fillStyle = '#0f172a';
                     ctx.font = 'bold 64px Georgia, serif';
                     ctx.fillText(`${appState.profile.firstName} ${appState.profile.lastName}`, canvas.width / 2, 330);
 
-                    // 4. Description Text
                     ctx.fillStyle = '#334155';
                     ctx.font = '24px Arial, sans-serif';
                     ctx.fillText('For your outstanding dedication, leadership, and volunteer service', canvas.width / 2, 410);
                     ctx.fillText('to the Rylee Peak for Mayor 2026 campaign.', canvas.width / 2, 450);
 
-                    // 5. Hours Highlight
                     ctx.fillStyle = '#0047AB';
                     ctx.font = 'bold 36px Arial, sans-serif';
                     ctx.fillText(`Total Hours Logged: ${(appState.profile.totalHours || 0).toFixed(1)}`, canvas.width / 2, 540);
 
-                    // 6. Slogan
                     ctx.fillStyle = '#3CAEA3';
                     ctx.font = 'italic bold 28px Georgia, serif';
                     ctx.fillText('"It Is Possible."', canvas.width / 2, 600);
 
-                    // 7. Date & Signatures
                     ctx.fillStyle = '#0f172a';
                     ctx.lineWidth = 1;
                     ctx.strokeStyle = '#94a3b8';
                     
-                    // Date Line
                     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
                     ctx.beginPath(); ctx.moveTo(250, 720); ctx.lineTo(450, 720); ctx.stroke();
                     ctx.font = '22px Arial, sans-serif';
@@ -1531,23 +1790,20 @@
                     ctx.fillStyle = '#64748b';
                     ctx.fillText('DATE ISSUED', 350, 745);
 
-                    // Signature Line
                     ctx.beginPath(); ctx.moveTo(650, 720); ctx.lineTo(850, 720); ctx.stroke();
                     ctx.fillStyle = '#0047AB';
-                    ctx.font = 'italic 38px "Brush Script MT", cursive, serif'; // Attempt script font
+                    ctx.font = 'italic 38px "Brush Script MT", cursive, serif'; 
                     ctx.fillText('Rylee Peak', 750, 705);
                     ctx.font = 'bold 16px Arial, sans-serif';
                     ctx.fillStyle = '#64748b';
                     ctx.fillText('RYLEE PEAK, CANDIDATE', 750, 745);
 
-                    // 8. Campaign Seal / Badge
-                    ctx.fillStyle = '#F9B233'; // Campaign Yellow
+                    ctx.fillStyle = '#F9B233'; 
                     ctx.beginPath(); ctx.arc(canvas.width / 2, 710, 45, 0, Math.PI * 2); ctx.fill();
                     ctx.fillStyle = '#fff';
                     ctx.font = 'bold 22px Arial, sans-serif';
                     ctx.fillText('2026', canvas.width / 2, 718);
 
-                    // 9. Trigger Download
                     const link = document.createElement('a');
                     link.download = `Certificate_${appState.profile.firstName}_${appState.profile.lastName}.png`;
                     link.href = canvas.toDataURL('image/png');
