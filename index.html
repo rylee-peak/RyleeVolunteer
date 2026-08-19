@@ -603,14 +603,9 @@
                     }
                     
                     UI.toast("Registering service worker...", "info");
-                    const registration = await navigator.serviceWorker.register('./sw.js').catch(e => null);
-                    if (!registration) {
-                        UI.toast("Service worker registration failed. Check connection.", "error");
-                        return false;
-                    }
                     
-                    // Force the browser to grab the newest sw.js, not a cached one
-                    await registration.update();
+                    // Register without forcing an immediate update, which crashes on some mobile browsers
+                    const registration = await navigator.serviceWorker.register('./sw.js');
                     const readyReg = await navigator.serviceWorker.ready;
                     
                     UI.toast("Asking Google for secure token...", "info");
