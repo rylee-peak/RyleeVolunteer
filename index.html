@@ -539,23 +539,33 @@
                 appState.currentView = viewId;
                 document.querySelectorAll('.nav-item, .nav-item-mobile').forEach(el => el.classList.remove('active'));
                 const dEl = document.getElementById(`nav-d-${viewId}`); const mEl = document.getElementById(`nav-m-${viewId}`);
-                if(dEl) dEl.classList.add('active'); if(mEl) mEl.classList.add('active');
+            if(dEl) dEl.classList.add('active'); if(mEl) mEl.classList.add('active');
 
-                if (viewId === 'notifications') {
-                    appState.previousReadTime = appState.profile.lastNotificationReadTime || 0;
-                    const now = Date.now(); appState.profile.lastNotificationReadTime = now;
-                    updateDoc(doc(db, "users", auth.currentUser.uid), { lastNotificationReadTime: now }).catch(e=>{});
-                    const bD = document.getElementById('badge-d-notifications'); const bM = document.getElementById('badge-m-notifications');
-                    if (bD) bD.classList.add('hidden'); if (bM) bM.classList.add('hidden');
-                }
+            if (viewId === 'notifications') {
+                appState.previousReadTime = appState.profile.lastNotificationReadTime || 0;
+                const now = Date.now(); appState.profile.lastNotificationReadTime = now;
+                updateDoc(doc(db, "users", auth.currentUser.uid), { lastNotificationReadTime: now }).catch(e=>{});
+                const bD = document.getElementById('badge-d-notifications'); const bM = document.getElementById('badge-m-notifications');
+                if (bD) bD.classList.add('hidden'); if (bM) bM.classList.add('hidden');
+            }
 
-                const container = document.getElementById('view-container');
-                container.innerHTML = app.views[viewId]();
-                if(app.controllers[viewId]) app.controllers[viewId]();
-                container.scrollTo(0,0);
-            },
+            const container = document.getElementById('view-container');
+            
+            // --- Smart Scroll Lock for Scout AI ---
+            if (viewId === 'chat') {
+                container.classList.remove('overflow-y-auto', 'pb-32');
+                container.classList.add('overflow-hidden', 'pb-20', 'flex', 'flex-col');
+            } else {
+                container.classList.add('overflow-y-auto', 'pb-32');
+                container.classList.remove('overflow-hidden', 'pb-20', 'flex', 'flex-col');
+            }
+            
+            container.innerHTML = app.views[viewId]();
+            if(app.controllers[viewId]) app.controllers[viewId]();
+            container.scrollTo(0,0);
+        },
 
-            views: {
+        views: {
                 dashboard: () => `
                     <div class="max-w-5xl mx-auto fade-in">
                         <header class="mb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
@@ -628,7 +638,7 @@
                     </div>
                 `,
                 chat: () => `
-                    <div class="max-w-3xl mx-auto h-[calc(100dvh-180px)] md:h-[calc(100dvh-100px)] flex flex-col fade-in">
+                    <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col min-h-0 fade-in">
                         <header class="mb-4 shrink-0 px-1">
                             <h2 class="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2"><i class="ph-fill ph-shooting-star text-campaign-yellow"></i> Scout</h2>
                             <p class="text-gray-500 text-sm">Your intelligent campaign trail companion.</p>
