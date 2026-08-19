@@ -243,6 +243,34 @@
             authMode: 'login',
 
             init: () => {
+                // --- NEW: Smart Deep Link Routing ---
+                const urlParams = new URLSearchParams(window.location.search);
+                const source = urlParams.get('source');
+                
+                // If they came from an email but are NOT in the standalone app, try to force open the app
+                if (source === 'email' && !app.isStandalone) {
+                    const isAndroid = /Android/i.test(navigator.userAgent);
+                    
+                    if (isAndroid) {
+                        // Android Intent Fallback pattern
+                        // Tries to open the app natively. If it fails, they just stay on the website.
+                        const currentUrl = window.location.href.split('?')[0]; 
+                        const intentUrl = `intent://${currentUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
+                        
+                        // We set a brief timeout. If the intent fails, the timeout fires and we do nothing (they stay on the site).
+                        // If the intent succeeds, the browser goes to the background and the timeout is paused.
+                        setTimeout(() => {
+                            // Do nothing, let them use the website
+                            console.log("App not installed or deep link failed. Falling back to web view.");
+                        }, 1500);
+                        
+                        window.location.href = intentUrl;
+                    } 
+                    // iOS is highly restrictive about custom URI routing without a native Swift app, 
+                    // so on iOS, they will safely fall back to the Safari web app experience.
+                }
+                // --- END NEW ---
+
                 window.addEventListener('offline', () => {
                     const offlineBanner = document.createElement('div');
                     offlineBanner.id = 'offline-banner';
