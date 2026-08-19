@@ -145,18 +145,30 @@
             </div>
             <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto" id="desktop-nav"></nav>
             <div class="p-4 border-t border-gray-100">
-                <div onclick="app.navigate('profile')" class="flex items-center gap-3 mb-4 px-2 py-2 -mx-2 rounded-xl cursor-pointer hover:bg-gray-50 transition group" title="View Profile">
-                    <div class="w-10 h-10 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-lg group-hover:bg-campaign-blue group-hover:text-white transition" id="user-avatar-desktop">?</div>
-                    <div class="flex-1 min-w-0"><p class="text-sm font-bold text-gray-900 truncate" id="user-name-desktop">Volunteer</p><p class="text-xs text-gray-500 truncate capitalize" id="user-role-desktop">Member</p></div>
+                <div class="flex items-center gap-2 mb-4">
+                    <div onclick="app.navigate('profile')" class="flex-1 flex items-center gap-3 px-2 py-2 -mx-2 rounded-xl cursor-pointer hover:bg-gray-50 transition group" title="View Profile">
+                        <div class="w-10 h-10 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-lg group-hover:bg-campaign-blue group-hover:text-white transition" id="user-avatar-desktop">?</div>
+                        <div class="flex-1 min-w-0"><p class="text-sm font-bold text-gray-900 truncate" id="user-name-desktop">Volunteer</p><p class="text-[10px] text-gray-500 truncate capitalize" id="user-role-desktop">Member</p></div>
+                    </div>
+                    <button onclick="app.navigate('notifications')" class="relative p-2 text-gray-400 hover:text-campaign-blue hover:bg-blue-50 rounded-xl transition shrink-0" title="Inbox">
+                        <i class="ph-fill ph-bell text-xl"></i>
+                        <span id="badge-d-notifications" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
+                    </button>
                 </div>
-                <button onclick="app.logout()" class="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition"><i class="ph ph-sign-out text-lg"></i> Sign Out</button>
+                <button onclick="app.logout()" class="w-full flex items-center justify-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-bold transition shadow-sm border border-transparent hover:border-red-100"><i class="ph-bold ph-sign-out"></i> Sign Out</button>
             </div>
         </aside>
 
         <main class="flex-1 h-full flex flex-col relative z-10 min-w-0">
             <header class="md:hidden bg-white border-b border-gray-200 pt-[max(env(safe-area-inset-top),1rem)] pb-3 px-4 flex items-center justify-between flex-shrink-0 z-20 shadow-sm">
                 <div class="flex items-center gap-2 text-campaign-blue font-bold"><i class="ph-fill ph-hands-clapping text-xl"></i> RyleeVolunteer</div>
-                <div class="flex items-center gap-3"><button onclick="app.navigate('profile')" class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-sm" id="user-avatar-mobile">?</button></div>
+                <div class="flex items-center gap-3">
+                    <button onclick="app.navigate('notifications')" class="relative text-gray-400 hover:text-campaign-blue transition">
+                        <i class="ph-fill ph-bell text-2xl"></i>
+                        <span id="badge-m-notifications" class="hidden absolute top-0 right-0.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
+                    </button>
+                    <button onclick="app.navigate('profile')" class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-sm shadow-sm" id="user-avatar-mobile">?</button>
+                </div>
             </header>
 
             <div id="view-container" class="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8 relative scroll-smooth">
@@ -412,8 +424,8 @@
                     const badgeD = document.getElementById('badge-d-notifications'); const badgeM = document.getElementById('badge-m-notifications');
                     
                     if (unreadCount > 0) {
-                        if(badgeD) { badgeD.innerText = unreadCount; badgeD.classList.remove('hidden'); }
-                        if(badgeM) { badgeM.classList.remove('hidden'); }
+                        if(badgeD) badgeD.classList.remove('hidden');
+                        if(badgeM) badgeM.classList.remove('hidden');
                     } else {
                         if(badgeD) badgeD.classList.add('hidden'); if(badgeM) badgeM.classList.add('hidden');
                     }
@@ -422,7 +434,7 @@
 
             incrementUnreadBadge: () => {
                 const bD = document.getElementById('badge-d-notifications'); const bM = document.getElementById('badge-m-notifications');
-                if (bD) { let count = parseInt(bD.innerText || '0') + 1; bD.innerText = count; bD.classList.remove('hidden'); }
+                if (bD) bD.classList.remove('hidden');
                 if (bM) bM.classList.remove('hidden');
             },
 
@@ -499,29 +511,22 @@
             buildNavigation: () => {
                 const navItems = [
                     { id: 'dashboard', icon: 'ph-squares-four', label: 'Dashboard' },
-                    { id: 'chat', icon: 'ph-robot', label: 'Campaign AI' },
-                    { id: 'notifications', icon: 'ph-bell', label: 'Inbox' },
-                    { id: 'announcements', icon: 'ph-megaphone', label: 'Updates' },
                     { id: 'opportunities', icon: 'ph-calendar-check', label: 'Shifts' },
-                    { id: 'directory', icon: 'ph-users', label: 'Community' },
-                    { id: 'tools', icon: 'ph-wrench', label: 'Tools' }
+                    { id: 'announcements', icon: 'ph-megaphone', label: 'Updates' },
+                    { id: 'chat', icon: 'ph-shooting-star', label: 'Scout AI' }
                 ];
                 if (appState.isAdmin) navItems.push({ id: 'admin', icon: 'ph-shield-check', label: 'Admin Console' });
 
                 document.getElementById('desktop-nav').innerHTML = navItems.map(item => `
-                    <a href="#" onclick="app.navigate('${item.id}')" id="nav-d-${item.id}" class="nav-item flex justify-between items-center px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition text-sm font-medium mb-1">
-                        <div class="flex items-center gap-3"><i class="ph ${item.icon} text-xl ${item.id === 'chat' ? 'text-purple-500' : ''}"></i> ${item.label}</div>
-                        ${item.id === 'notifications' ? `<span id="badge-d-notifications" class="hidden bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">0</span>` : ''}
+                    <a href="#" onclick="app.navigate('${item.id}')" id="nav-d-${item.id}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition text-sm font-medium mb-1">
+                        <i class="ph-fill ${item.icon} text-xl ${item.id === 'chat' ? 'text-campaign-yellow' : 'text-gray-400'}"></i> ${item.label}
                     </a>
                 `).join('');
 
                 document.getElementById('mobile-nav').innerHTML = navItems.map(item => `
                     <a href="#" onclick="app.navigate('${item.id}')" id="nav-m-${item.id}" class="nav-item-mobile flex flex-col items-center gap-1 text-gray-500 py-2 flex-1 px-1 text-center transition">
-                        <div class="relative">
-                            <i class="ph ${item.icon} text-2xl ${item.id === 'chat' ? 'text-purple-500 opacity-80' : ''}"></i>
-                            ${item.id === 'notifications' ? `<span id="badge-m-notifications" class="hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></span>` : ''}
-                        </div>
-                        <span class="text-[9px] font-medium uppercase tracking-wider ${item.id === 'chat' ? 'text-purple-600' : ''}">${item.label}</span>
+                        <i class="ph-fill ${item.icon} text-2xl ${item.id === 'chat' ? 'text-campaign-yellow opacity-90' : 'text-gray-400'}"></i>
+                        <span class="text-[9px] font-bold uppercase tracking-wider ${item.id === 'chat' ? 'text-yellow-600' : ''}">${item.label}</span>
                     </a>
                 `).join('');
             },
@@ -562,10 +567,10 @@
                                 <div class="bg-gradient-to-br from-campaign-blue to-blue-800 rounded-2xl p-6 shadow-md text-white relative overflow-hidden"><div class="absolute -right-4 -top-4 opacity-10 text-9xl"><i class="ph-fill ph-megaphone"></i></div><h3 class="font-bold mb-4 opacity-90 flex items-center gap-2 relative z-10"><i class="ph ph-newspaper text-xl"></i> Latest Update</h3><div id="dash-latest-announcement" class="relative z-10"><div class="spinner border-white border-l-transparent w-6 h-6 mx-auto"></div></div></div>
                                 <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ph-fill ph-lightning text-campaign-yellow text-xl"></i> Quick Links</h3>
                                     <div class="grid grid-cols-2 gap-3">
-                                        <button onclick="app.navigate('chat')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-100 transition"><i class="ph-fill ph-robot text-2xl text-purple-500"></i><span class="text-xs font-bold text-purple-700">Campaign AI</span></button>
-                                        <button onclick="app.navigate('tools')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-wrench text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">My Tools</span></button>
-                                        <button onclick="app.navigate('profile')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-user-circle text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Profile</span></button>
-                                        <a href="https://VoteRylee.com" target="_blank" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph ph-globe text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Website</span></a>
+                                        <button onclick="app.navigate('directory')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-100 transition"><i class="ph-fill ph-users text-2xl text-campaign-blue"></i><span class="text-xs font-bold text-blue-800">Community</span></button>
+                                        <button onclick="app.navigate('tools')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph-fill ph-wrench text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">My Tools</span></button>
+                                        <button onclick="app.navigate('profile')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph-fill ph-user-circle text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Profile</span></button>
+                                        <a href="https://VoteRylee.com" target="_blank" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"><i class="ph-fill ph-globe text-2xl text-gray-600"></i><span class="text-xs font-medium text-gray-700">Website</span></a>
                                     </div>
                                 </div>
                             </div>
