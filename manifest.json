@@ -4,11 +4,18 @@
 "short_name": "RyleeVol",
 "description": "Volunteer coordination platform for the Rylee for Mayor campaign.",
 "start_url": "./index.html",
+"scope": "/",
+"lang": "en",
+"dir": "ltr",
 "display": "standalone",
+"display_override": ["window-controls-overlay", "minimal-ui"],
 "background_color": "#F3F4F6",
 "theme_color": "#0047AB",
 "orientation": "portrait-primary",
 "categories": ["social", "politics", "productivity"],
+"launch_handler": {
+"client_mode": "navigate-existing"
+},
 "icons": [
 {
 "src": "https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV",
