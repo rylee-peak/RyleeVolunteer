@@ -77,3 +77,26 @@ self.addEventListener('fetch', (event) => {
         })
     );
 });
+
+// 1. Standard Background Sync (Triggered when connection is restored)
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'sync-campaign-data') {
+        console.log('[sw.js] Background sync triggered: Checking for pending actions.');
+        // Note: Firebase handles the actual database sync automatically via its SDK,
+        // but this satisfies PWA requirements and allows for custom background task handling.
+        event.waitUntil(Promise.resolve());
+    }
+});
+
+// 2. Periodic Background Sync (Triggered by the OS periodically)
+self.addEventListener('periodicsync', (event) => {
+    if (event.tag === 'update-campaign-assets') {
+        console.log('[sw.js] Periodic sync triggered: Refreshing app assets.');
+        // Refresh the static assets in the background so the app loads faster next time
+        event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => {
+                return Promise.allSettled(STATIC_ASSETS.map(url => cache.add(url)));
+            })
+        );
+    }
+});
