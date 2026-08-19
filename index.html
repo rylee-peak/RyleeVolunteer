@@ -602,22 +602,32 @@
                         return false;
                     }
                     
-                    // Register SW and explicitly wait for it to be ready
+                    UI.toast("Registering service worker...", "info");
                     const registration = await navigator.serviceWorker.register('./sw.js').catch(e => null);
                     if (!registration) {
                         UI.toast("Service worker registration failed. Check connection.", "error");
                         return false;
                     }
+                    
+                    // Force the browser to grab the newest sw.js, not a cached one
+                    await registration.update();
                     const readyReg = await navigator.serviceWorker.ready;
                     
+                    UI.toast("Asking Google for secure token...", "info");
                     const vapidKey = "BGGIJRt1rLfyCPVoJK0ufqrdP3HcOHIwL-tHFDocbLxJz22TjDrdX8R_r_2aVqhHSiHmICNoa8vzoSkB0EKjDpI"; 
                     
-                    const token = await getToken(messaging, { 
+                    // Wrap getToken in a timeout so it can't hang forever silently
+                    const tokenPromise = getToken(messaging, { 
                         vapidKey: vapidKey,
                         serviceWorkerRegistration: readyReg 
                     });
                     
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Google took too long to respond. (Timeout)")), 10000));
+                    
+                    const token = await Promise.race([tokenPromise, timeoutPromise]);
+                    
                     if (token) {
+                        UI.toast("Saving token to profile...", "info");
                         await updateDoc(doc(db, "users", auth.currentUser.uid), { fcmToken: token });
                         return true;
                     } else {
@@ -1142,23 +1152,21 @@
                     UI.toast("Push not supported here. On iPhone, tap Share -> Add to Home Screen first!", "error");
                     return;
                 }
-                if (Notification.permission === "granted") {
-                    UI.toast("Refreshing token...", "info");
-                    const success = await app.setupFCMToken();
-                    if (success) UI.toast("Notifications are enabled and token refreshed!", "info");
-                    return;
-                }
+                
                 try {
+                    // Force the permission dialog before anything else
                     const permission = await Notification.requestPermission();
                     if (permission === "granted") {
-                        UI.toast("Connecting to push service...", "info");
                         const success = await app.setupFCMToken();
-                        if (success) UI.toast("Push notifications enabled successfully.");
+                        if (success) {
+                            UI.toast("Push notifications enabled successfully!");
+                        }
                     } else {
                         UI.toast("Permission denied. You can enable this in your browser settings.", "error");
                     }
                 } catch(e) {
                     console.error(e);
+                    UI.toast("Error getting permission: " + e.message, "error");
                 }
             },
 
