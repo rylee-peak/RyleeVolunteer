@@ -872,15 +872,16 @@
                     const shiftsDiv = document.getElementById('dash-my-shifts');
                     const annDiv = document.getElementById('dash-latest-announcement');
                     
+                    // 🚀 1. FIRE ALL DASHBOARD QUERIES CONCURRENTLY
+                    const pTools = getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)));
+                    const pOpps = getDocs(query(collection(db, "opportunities"), orderBy("date", "asc")));
+                    const pAnn = getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(1)));
+                    
                     try {
+                        const [snapTools, snapOpps] = await Promise.all([pTools, pOpps]);
+                        
                         let alertHtml = '';
-                        let toolsCount = 0;
-                        let myShiftsCount = 0;
-                        let availableShiftsCount = 0;
-
-                        const qTools = query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid));
-                        const snapTools = await getDocs(qTools);
-                        toolsCount = snapTools.size;
+                        const toolsCount = snapTools.size;
 
                         if(snapTools.empty) {
                             alertHtml += `<div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex gap-3 text-sm"><i class="ph-fill ph-clock text-campaign-blue text-2xl shrink-0"></i><div><p class="font-bold text-campaign-blue mb-1">Credentials Pending</p><p class="text-gray-600 leading-relaxed">Your campaign tools are being set up. Check back later.</p></div></div>`;
@@ -888,18 +889,20 @@
                             alertHtml += `<div class="bg-green-50 border border-green-100 p-4 rounded-xl flex gap-3 text-sm cursor-pointer hover:shadow-md transition" onclick="app.navigate('tools')"><i class="ph-fill ph-check-circle text-green-600 text-2xl shrink-0"></i><div><p class="font-bold text-green-700 mb-1">Tools Ready</p><p class="text-gray-600 leading-relaxed">You have ${toolsCount} campaign tool(s) assigned and ready.</p></div></div>`;
                         }
 
-                        const qOpps = query(collection(db, "opportunities"), orderBy("date", "asc"));
-                        const snapOpps = await getDocs(qOpps);
+                        // 🚀 2. CHECK ALL SHIFT SIGNUPS CONCURRENTLY
                         const myShifts = [];
+                        let availableShiftsCount = 0;
                         
-                        for (const d of snapOpps.docs) {
-                            const data = d.data();
+                        await Promise.all(snapOpps.docs.map(async (d) => {
                             try {
                                 const suSnap = await getDoc(doc(db, "opportunities", d.id, "signups", auth.currentUser.uid));
-                                suSnap.exists() ? myShifts.push({ id: d.id, ...data }) : availableShiftsCount++;
-                            } catch(e) {}
-                        }
-                        myShiftsCount = myShifts.length;
+                                if (suSnap.exists()) myShifts.push({ id: d.id, ...d.data() });
+                                else availableShiftsCount++;
+                            } catch(e) { availableShiftsCount++; }
+                        }));
+
+                        myShifts.sort((a,b) => a.date.localeCompare(b.date));
+                        const myShiftsCount = myShifts.length;
 
                         if (availableShiftsCount > 0) {
                             alertHtml += `<div class="bg-yellow-50 border border-yellow-100 p-4 rounded-xl flex gap-3 text-sm mt-3 cursor-pointer hover:shadow-md transition" onclick="app.navigate('opportunities')"><i class="ph-fill ph-star text-yellow-600 text-2xl shrink-0"></i><div><p class="font-bold text-yellow-700 mb-1">New Opportunities</p><p class="text-gray-600 leading-relaxed">${availableShiftsCount} open volunteer shifts available.</p></div></div>`;
@@ -927,7 +930,7 @@
                     } catch (e) { if(alertsDiv) alertsDiv.innerHTML = '<div class="p-4 bg-red-50 text-red-600 text-sm rounded-xl">Error loading dashboard data.</div>'; }
                     
                     try {
-                        const snapAnn = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc")));
+                        const snapAnn = await pAnn; // Resolves instantly if already fetched
                         if(!snapAnn.empty) {
                             const data = snapAnn.docs[0].data();
                             const dateStr = data.createdAt ? new Date(data.createdAt.toDate()).toLocaleDateString() : 'Recent';
@@ -985,29 +988,28 @@
                     try {
                         const snap = await getDocs(query(collection(db, "opportunities"), orderBy("date", "asc")));
                         if(snap.empty) { UI.showEmpty('opps-list', 'No upcoming shifts.'); return; }
-                        const container = document.getElementById('opps-list');
-                        container.innerHTML = '';
                         
-                        for (const d of snap.docs) {
+                        // 🚀 3. CHECK ALL SIGNUPS CONCURRENTLY
+                        const results = await Promise.all(snap.docs.map(async (d) => {
                             const data = d.data();
                             let signedUp = false;
                             try {
                                 const suSnap = await getDoc(doc(db, "opportunities", d.id, "signups", auth.currentUser.uid));
                                 signedUp = suSnap.exists();
                             } catch(e) {}
-                            
-                            const div = document.createElement('div');
-                            div.className = "bg-white p-5 rounded-2xl shadow-sm border flex flex-col justify-between";
-                            div.innerHTML = `
+                            return { id: d.id, data, signedUp };
+                        }));
+
+                        document.getElementById('opps-list').innerHTML = results.map(r => `
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border flex flex-col justify-between">
                                 <div>
-                                    <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-gray-900">${UI.escapeHtml(data.title)}</h3>${signedUp ? '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">Attending</span>' : ''}</div>
-                                    <p class="text-sm text-gray-600 mb-3 line-clamp-2">${UI.escapeHtml(data.description)}</p>
-                                    <div class="space-y-1 text-xs text-gray-500 mb-4"><p><i class="ph ph-calendar-blank text-campaign-blue"></i> ${UI.escapeHtml(data.date)} • ${UI.escapeHtml(data.time)}</p><p><i class="ph ph-map-pin text-campaign-blue"></i> ${UI.escapeHtml(data.location)}</p></div>
+                                    <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-gray-900">${UI.escapeHtml(r.data.title)}</h3>${r.signedUp ? '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">Attending</span>' : ''}</div>
+                                    <p class="text-sm text-gray-600 mb-3 line-clamp-2">${UI.escapeHtml(r.data.description)}</p>
+                                    <div class="space-y-1 text-xs text-gray-500 mb-4"><p><i class="ph ph-calendar-blank text-campaign-blue"></i> ${UI.escapeHtml(r.data.date)} • ${UI.escapeHtml(r.data.time)}</p><p><i class="ph ph-map-pin text-campaign-blue"></i> ${UI.escapeHtml(r.data.location)}</p></div>
                                 </div>
-                                <button onclick="app.toggleSignup('${d.id}', ${signedUp})" class="w-full py-2.5 rounded-lg text-sm font-bold transition border ${signedUp ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-transparent bg-campaign-blue text-white hover:bg-blue-800'}">${signedUp ? 'Cancel Signup' : 'Sign Up for Shift'}</button>
-                            `;
-                            container.appendChild(div);
-                        }
+                                <button onclick="app.toggleSignup('${r.id}', ${r.signedUp})" class="w-full py-2.5 rounded-lg text-sm font-bold transition border ${r.signedUp ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-transparent bg-campaign-blue text-white hover:bg-blue-800'}">${r.signedUp ? 'Cancel Signup' : 'Sign Up for Shift'}</button>
+                            </div>
+                        `).join('');
                     } catch(e) { document.getElementById('opps-list').innerHTML = `<p class="text-red-500">Error loading shifts.</p>`; }
                 },
 
@@ -1030,11 +1032,15 @@
                 tools: async () => {
                     UI.showLoading('tools-list');
                     try {
-                        const toolsSnap = await getDocs(collection(db, "campaignTools"));
+                        // 🚀 4. FETCH TOOLS & CREDENTIALS CONCURRENTLY
+                        const [toolsSnap, snap] = await Promise.all([
+                            getDocs(collection(db, "campaignTools")),
+                            getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)))
+                        ]);
+
                         const toolsMap = {};
                         toolsSnap.docs.forEach(d => toolsMap[d.id] = d.data());
 
-                        const snap = await getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)));
                         if(snap.empty) { UI.showEmpty('tools-list', 'Your credentials are being prepared.', 'ph-clock-countdown'); return; }
                         
                         let creds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1083,8 +1089,14 @@
                     try {
                         const notifs = [];
                         
-                        // Push Alerts
-                        const alertSnap = await getDocs(query(collection(db, "pushAlerts"), orderBy("createdAt", "desc"), limit(10)));
+                        // 🚀 5. FETCH ALL 4 INBOX COLLECTIONS CONCURRENTLY
+                        const [alertSnap, annSnap, oppSnap, credSnap] = await Promise.all([
+                            getDocs(query(collection(db, "pushAlerts"), orderBy("createdAt", "desc"), limit(10))),
+                            getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(10))),
+                            getDocs(query(collection(db, "opportunities"), orderBy("createdAt", "desc"), limit(10))),
+                            getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)))
+                        ]);
+
                         alertSnap.docs.forEach(d => {
                             const data = d.data();
                             if(data.createdAt) {
@@ -1099,7 +1111,6 @@
                         });
 
                         // Recent Announcements
-                        const annSnap = await getDocs(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(10)));
                         annSnap.docs.forEach(d => {
                             const data = d.data();
                             if(data.createdAt) {
@@ -1114,7 +1125,6 @@
                         });
 
                         // Recent Opportunities
-                        const oppSnap = await getDocs(query(collection(db, "opportunities"), orderBy("createdAt", "desc"), limit(10)));
                         oppSnap.docs.forEach(d => {
                             const data = d.data();
                             if(data.createdAt) {
@@ -1129,7 +1139,6 @@
                         });
 
                         // New Credentials
-                        const credSnap = await getDocs(query(collection(db, "userCredentials"), where("userId", "==", auth.currentUser.uid)));
                         credSnap.docs.forEach(d => {
                             const data = d.data();
                             if(data.createdAt) {
@@ -1360,15 +1369,18 @@
 
             renderAdminOverview: async (container) => {
                 try {
-                    const userSnap = await getDocs(query(collection(db, "users")));
+                    // 🚀 6. FETCH ALL ADMIN STATS CONCURRENTLY
+                    const [userSnap, oppSnap, credSnap] = await Promise.all([
+                        getDocs(query(collection(db, "users"))),
+                        getDocs(query(collection(db, "opportunities"))),
+                        getDocs(query(collection(db, "userCredentials")))
+                    ]);
+                    
                     const users = userSnap.docs.map(d => ({id: d.id, ...d.data()}));
                     const totalUsers = users.length;
                     const admins = users.filter(u => u.role === 'admin').length;
                     
                     const recentUsers = [...users].sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)).slice(0, 4);
-                    
-                    const oppSnap = await getDocs(query(collection(db, "opportunities")));
-                    const credSnap = await getDocs(query(collection(db, "userCredentials")));
                     
                     let recentHtml = recentUsers.map(u => `
                         <div class="flex items-center justify-between p-3 border-b last:border-0 hover:bg-gray-50 transition cursor-pointer" onclick="app.adminViewProfile('${u.id}')">
@@ -1449,17 +1461,21 @@
 
             renderAdminTools: async (container) => {
                 try {
-                    const uSnap = await getDocs(query(collection(db, "users"), where("status", "==", "active")));
+                    // 🚀 7. FETCH USERS, TOOLS, AND CREDS CONCURRENTLY
+                    const [uSnap, tSnap, cSnap] = await Promise.all([
+                        getDocs(query(collection(db, "users"), where("status", "==", "active"))),
+                        getDocs(collection(db, "campaignTools")),
+                        getDocs(collection(db, "userCredentials"))
+                    ]);
+
                     const users = uSnap.docs.map(d => ({id: d.id, name: d.data().firstName + ' ' + d.data().lastName})).sort((a,b) => a.name.localeCompare(b.name));
                     let userOpts = users.map(u => `<option value="${u.id}">${UI.escapeHtml(u.name)}</option>`).join('');
 
-                    const tSnap = await getDocs(collection(db, "campaignTools"));
                     const tools = tSnap.docs.map(d => ({id: d.id, ...d.data()}));
                     let toolOpts = tools.map(t => `<option value="${t.id}">${UI.escapeHtml(t.name)}</option>`).join('');
                     
                     let toolsListHtml = tools.map(t => `<div class="border-b p-3 flex justify-between items-center hover:bg-gray-50"><div><p class="font-bold text-sm">${UI.escapeHtml(t.name)}</p><a href="${UI.escapeHtml(t.url || '#')}" target="_blank" class="text-xs text-campaign-blue">${UI.escapeHtml(t.url || 'No URL')}</a></div><button onclick="app.adminDeleteTool('${t.id}')" class="text-red-400 p-1"><i class="ph-bold ph-trash"></i></button></div>`).join('');
 
-                    const cSnap = await getDocs(collection(db, "userCredentials"));
                     const groupedCreds = {};
                     cSnap.docs.forEach(d => {
                         const c = d.data();
