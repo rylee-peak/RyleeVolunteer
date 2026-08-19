@@ -346,7 +346,28 @@
 
                 const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
                 if ('serviceWorker' in navigator && isValidEnv) {
-                    navigator.serviceWorker.register('./sw.js').catch(e => {
+                    navigator.serviceWorker.register('./sw.js').then(async (registration) => {
+                        // 1. Register Standard Background Sync
+                        if ('sync' in registration) {
+                            try {
+                                await registration.sync.register('sync-campaign-data');
+                                console.log('Background Sync registered successfully.');
+                            } catch (e) { console.warn('Background Sync skipped (not supported or denied).'); }
+                        }
+
+                        // 2. Register Periodic Background Sync (App checks for updates every 24 hours)
+                        if ('periodicSync' in registration) {
+                            try {
+                                const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+                                if (status.state === 'granted') {
+                                    await registration.periodicSync.register('update-campaign-assets', {
+                                        minInterval: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+                                    });
+                                    console.log('Periodic Sync registered successfully.');
+                                }
+                            } catch (e) { console.warn('Periodic Sync skipped (not supported or denied).'); }
+                        }
+                    }).catch(e => {
                         // Suppress the specific Canvas/Sandbox routing error where it returns HTML instead of JS
                         if(e.message && !e.message.includes("'<Location>'") && !e.toString().includes("<")) {
                             console.error('SW Error:', e);
