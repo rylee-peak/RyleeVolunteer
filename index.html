@@ -219,7 +219,15 @@
         const fbApp = initializeApp(firebaseConfig);
         const auth = getAuth(fbApp);
         const db = getFirestore(fbApp);
-        const messaging = typeof window !== 'undefined' && 'serviceWorker' in navigator ? getMessaging(fbApp) : null;
+        
+        let messaging = null;
+        try {
+            if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window) {
+                messaging = getMessaging(fbApp);
+            }
+        } catch (e) {
+            console.warn("FCM not supported on this browser.");
+        }
 
         // Listen for foreground FCM messages
         if (messaging) {
@@ -373,9 +381,9 @@
                                 app.updateUnreadBadge();
                                 app.navigate('dashboard');
 
-                                if (Notification.permission === 'granted') {
+                                if ('Notification' in window && Notification.permission === 'granted') {
                                     app.setupFCMToken();
-                                } else if (Notification.permission !== 'denied') {
+                                } else if ('Notification' in window && Notification.permission !== 'denied') {
                                     setTimeout(() => {
                                         const onboarding = document.getElementById('notification-onboarding');
                                         if (onboarding) onboarding.classList.remove('hidden');
@@ -615,14 +623,18 @@
 
             resolveNotificationPrompt: async (accept) => {
                 if (accept) {
-                    try {
-                        const permission = await Notification.requestPermission();
-                        if (permission === "granted") {
-                            await app.setupFCMToken();
-                            UI.toast("Push notifications enabled!");
+                    if (!('Notification' in window)) {
+                        UI.toast("Push not supported here. On iPhone, tap Share -> Add to Home Screen first!", "error");
+                    } else {
+                        try {
+                            const permission = await Notification.requestPermission();
+                            if (permission === "granted") {
+                                await app.setupFCMToken();
+                                UI.toast("Push notifications enabled!");
+                            }
+                        } catch(e) {
+                            console.error("Notification permission error:", e);
                         }
-                    } catch(e) {
-                        console.error("Notification permission error:", e);
                     }
                 }
                 document.getElementById('notification-onboarding').classList.add('hidden');
@@ -1114,7 +1126,7 @@
 
             requestPushPermission: async () => {
                 if (!("Notification" in window)) {
-                    UI.toast("This browser does not support push notifications.", "error");
+                    UI.toast("Push not supported here. On iPhone, tap Share -> Add to Home Screen first!", "error");
                     return;
                 }
                 if (Notification.permission === "granted") {
