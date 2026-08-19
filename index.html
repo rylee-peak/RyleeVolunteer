@@ -574,11 +574,12 @@
                                 <div class="bg-gray-100 text-gray-800 p-3 rounded-2xl rounded-tl-none text-sm shadow-sm">Hi ${UI.escapeHtml(appState.profile?.firstName)}! I'm Scout, your campaign trail companion. How can I help you today?</div>
                             </div>
                         </div>
-                        <div class="bg-white border border-gray-200 rounded-b-2xl p-3 shadow-sm shrink-0">
-                            <form onsubmit="event.preventDefault(); app.sendChatMessage()" class="flex gap-2">
+                        <div class="bg-white border border-gray-200 rounded-b-2xl p-3 pb-2 shadow-sm shrink-0">
+                            <form onsubmit="event.preventDefault(); app.sendChatMessage()" class="flex gap-2 mb-2">
                                 <input type="text" id="chat-input" placeholder="Ask Scout a question..." autocomplete="off" class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-campaign-yellow focus:ring-2 focus:ring-yellow-100 transition text-sm">
                                 <button type="submit" id="chat-btn" class="bg-campaign-yellow text-gray-900 w-12 h-12 rounded-xl flex items-center justify-center hover:bg-yellow-500 transition shadow-sm font-bold"><i class="ph-bold ph-paper-plane-right"></i></button>
                             </form>
+                            <p class="text-[10px] text-gray-400 text-center flex items-center justify-center gap-1.5"><i class="ph-fill ph-warning-circle text-gray-400"></i> Scout is an AI. Responses may take a moment to generate and can be inaccurate. Verify facts before sharing.</p>
                         </div>
                     </div>
                 `,
