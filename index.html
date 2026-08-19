@@ -147,7 +147,7 @@
         </div>
     </div>
 
-    <div id="main-app" class="hidden h-screen w-full flex flex-col md:flex-row bg-gray-50">
+    <div id="main-app" class="hidden fixed inset-0 w-full flex flex-col md:flex-row bg-gray-50">
         
         <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-full flex-shrink-0 relative z-20">
             <div class="p-6 border-b border-gray-100 flex items-center gap-3">
@@ -851,16 +851,16 @@
                     </div>
                 `,
                 admin: () => `
-                    <div class="max-w-6xl mx-auto fade-in h-full flex flex-col">
-                        <header class="mb-6 shrink-0"><h2 class="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2"><i class="ph-fill ph-shield-check text-campaign-blue"></i> Admin Console</h2></header>
-                        <div class="flex overflow-x-auto gap-2 mb-6 border-b border-gray-200 shrink-0 pb-2 custom-scrollbar">
+                    <div class="max-w-6xl mx-auto fade-in pb-8">
+                        <header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2"><i class="ph-fill ph-shield-check text-campaign-blue"></i> Admin Console</h2></header>
+                        <div class="flex overflow-x-auto gap-2 mb-6 border-b border-gray-200 pb-2 custom-scrollbar">
                             <button onclick="app.adminTab('overview')" id="tab-overview" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm bg-blue-50 text-campaign-blue">Overview</button>
                             <button onclick="app.adminTab('volunteers')" id="tab-volunteers" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Volunteers</button>
                             <button onclick="app.adminTab('tools')" id="tab-tools" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Credentials</button>
                             <button onclick="app.adminTab('announcements')" id="tab-announcements" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Updates</button>
                             <button onclick="app.adminTab('opportunities')" id="tab-opportunities" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Shifts</button>
                         </div>
-                        <div id="admin-content" class="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-[500px]"></div>
+                        <div id="admin-content" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden min-h-[500px]"></div>
                     </div>
                 `
             },
@@ -1396,19 +1396,19 @@
                     `).join('');
 
                     container.innerHTML = `
-                        <div class="p-6 h-full flex flex-col bg-gray-50/50">
+                        <div class="p-4 md:p-6 bg-gray-50/50">
                             <h3 class="font-bold text-xl text-gray-900 mb-6 flex items-center gap-2"><i class="ph-fill ph-chart-pie-slice text-campaign-blue"></i> Platform Overview</h3>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 shrink-0">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-users text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Volunteers</span><span class="text-4xl font-black text-campaign-blue relative z-10">${totalUsers}</span></div>
                                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-shield-check text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Admins</span><span class="text-4xl font-black text-campaign-teal relative z-10">${admins}</span></div>
                                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-calendar-check text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Total Shifts</span><span class="text-4xl font-black text-campaign-yellow relative z-10">${oppSnap.size}</span></div>
                                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-key text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Tool Logins</span><span class="text-4xl font-black text-gray-700 relative z-10">${credSnap.size}</span></div>
                             </div>
-                            <div class="grid md:grid-cols-2 gap-6 flex-1 min-h-0">
-                                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col min-h-0"><div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0 rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-clock-counter-clockwise text-campaign-blue text-lg"></i> Newest Volunteers</h4><button onclick="app.adminTab('volunteers')" class="text-xs font-bold text-campaign-blue hover:underline">View All</button></div><div class="p-2 overflow-y-auto flex-1">${recentHtml || '<p class="text-sm text-gray-500 p-4 text-center">No users.</p>'}</div></div>
-                                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col min-h-0">
-                                    <div class="p-4 border-b border-gray-100 bg-gray-50 shrink-0 rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-lightning text-campaign-yellow text-lg"></i> Quick Actions</h4></div>
-                                    <div class="p-5 grid grid-cols-2 gap-3 flex-1 overflow-hidden">
+                            <div class="grid md:grid-cols-2 gap-6">
+                                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col"><div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-clock-counter-clockwise text-campaign-blue text-lg"></i> Newest Volunteers</h4><button onclick="app.adminTab('volunteers')" class="text-xs font-bold text-campaign-blue hover:underline">View All</button></div><div class="p-2">${recentHtml || '<p class="text-sm text-gray-500 p-4 text-center">No users.</p>'}</div></div>
+                                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col">
+                                    <div class="p-4 border-b border-gray-100 bg-gray-50 rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-lightning text-campaign-yellow text-lg"></i> Quick Actions</h4></div>
+                                    <div class="p-5 grid grid-cols-2 gap-3">
                                         <button onclick="app.adminTab('announcements')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-megaphone text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Post Update</span></button>
                                         <button onclick="app.adminTab('opportunities')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-calendar-plus text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Create Shift</span></button>
                                         <button onclick="app.adminTab('tools')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-key text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Provision Tool</span></button>
@@ -1494,8 +1494,8 @@
                     }).join('') : '<div class="bg-white border rounded-lg p-4 text-sm text-gray-500">No credentials provisioned.</div>';
 
                     container.innerHTML = `
-                        <div class="flex flex-col md:flex-row h-full">
-                            <div class="w-full md:w-1/2 border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto bg-gray-50">
+                        <div class="flex flex-col md:flex-row">
+                            <div class="w-full md:w-1/2 border-b md:border-b-0 md:border-r border-gray-200 p-4 bg-gray-50">
                                 <h3 class="font-bold text-lg mb-4">1. Define Campaign Tool</h3>
                                 <form onsubmit="event.preventDefault(); app.adminCreateTool()" class="space-y-3 mb-8 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                                     <div><label class="text-xs font-bold text-gray-500">Tool Name</label><input type="text" id="admin-tool-name" required class="w-full border rounded p-2 text-sm"></div>
@@ -1513,7 +1513,7 @@
                                     <button type="submit" id="admin-cred-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm hover:bg-blue-800 transition">Assign Credential</button>
                                 </form>
                             </div>
-                            <div class="w-full md:w-1/2 p-4 overflow-y-auto space-y-6">
+                            <div class="w-full md:w-1/2 p-4 space-y-6">
                                 <div><h3 class="font-bold text-lg mb-3">Active Tools</h3><div class="bg-white border rounded-lg">${toolsListHtml || '<p class="p-4 text-sm text-gray-500">No tools defined.</p>'}</div></div>
                                 <div><h3 class="font-bold text-lg mb-3">Provisioned Credentials</h3><div>${credsHtml}</div></div>
                             </div>
@@ -1566,8 +1566,8 @@
                     let anns = annsData.map(data => `<div class="border-b p-3 flex justify-between items-center hover:bg-gray-50"><div><p class="font-bold text-sm text-gray-900">${data.pinned ? '<i class="ph-fill ph-push-pin text-campaign-yellow"></i> ' : ''}${UI.escapeHtml(data.title)}</p></div><div class="flex items-center gap-2"><button onclick="app.adminToggleAnnouncementPin('${data.id}', ${!!data.pinned})" class="${data.pinned ? 'text-campaign-yellow' : 'text-gray-400 hover:text-campaign-yellow'} p-1 transition" title="${data.pinned ? 'Unpin' : 'Pin to top'}"><i class="${data.pinned ? 'ph-fill' : 'ph-bold'} ph-push-pin text-lg"></i></button><button onclick="app.adminDeleteAnnouncement('${data.id}')" class="text-red-400 hover:text-red-600 p-1"><i class="ph-bold ph-trash text-lg"></i></button></div></div>`).join('');
 
                     container.innerHTML = `
-                        <div class="flex flex-col md:flex-row h-full">
-                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto bg-gray-50">
+                        <div class="flex flex-col md:flex-row">
+                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 bg-gray-50">
                                 <h3 class="font-bold text-lg mb-4">Post Update</h3>
                                 <form onsubmit="event.preventDefault(); app.adminCreateAnnouncement()" class="space-y-3 mb-8 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                                     <div><label class="text-xs font-bold text-gray-500">Title</label><input type="text" id="admin-ann-title" required class="w-full border rounded p-2 text-sm"></div>
@@ -1587,7 +1587,7 @@
                                     <button type="submit" id="admin-push-btn" class="w-full bg-red-600 text-white rounded p-2 font-bold text-sm hover:bg-red-700 transition shadow-sm flex justify-center items-center gap-2"><i class="ph-bold ph-bell-ringing"></i> Send Push Alert</button>
                                 </form>
                             </div>
-                            <div class="w-full md:w-2/3 p-4 overflow-y-auto"><h3 class="font-bold text-lg mb-4">Past Announcements</h3><div class="bg-white border rounded-lg">${anns || '<p class="p-4 text-sm text-gray-500">No updates yet.</p>'}</div></div>
+                            <div class="w-full md:w-2/3 p-4"><h3 class="font-bold text-lg mb-4">Past Announcements</h3><div class="bg-white border rounded-lg">${anns || '<p class="p-4 text-sm text-gray-500">No updates yet.</p>'}</div></div>
                         </div>
                     `;
                 } catch(e) { container.innerHTML = '<p class="text-red-500 p-4">Error loading module.</p>'; }
@@ -1638,8 +1638,8 @@
                     }).join('');
                     
                     container.innerHTML = `
-                        <div class="flex flex-col md:flex-row h-full">
-                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto">
+                        <div class="flex flex-col md:flex-row">
+                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4">
                                 <h3 class="font-bold text-lg mb-4">New Event/Shift</h3>
                                 <form onsubmit="event.preventDefault(); app.adminCreateOpp()" class="space-y-3">
                                     <div><label class="text-xs font-bold text-gray-500">Event Title</label><input type="text" id="admin-opp-title" required class="w-full border rounded p-2 text-sm"></div>
@@ -1652,7 +1652,7 @@
                                     <button type="submit" id="admin-opp-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Create Event</button>
                                 </form>
                             </div>
-                            <div class="w-full md:w-2/3 p-4 overflow-y-auto"><h3 class="font-bold text-lg mb-4">Manage Shifts</h3><div class="bg-white border rounded-lg overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Title</th><th class="p-3">Date</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="p-4 text-center text-gray-500">No shifts</td></tr>'}</tbody></table></div></div>
+                            <div class="w-full md:w-2/3 p-4"><h3 class="font-bold text-lg mb-4">Manage Shifts</h3><div class="bg-white border rounded-lg overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Title</th><th class="p-3">Date</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="p-4 text-center text-gray-500">No shifts</td></tr>'}</tbody></table></div></div>
                         </div>
                     `;
                 } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading opportunities.</p>'; }
