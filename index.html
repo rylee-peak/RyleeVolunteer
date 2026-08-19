@@ -6,6 +6,7 @@
     <title>RyleeVolunteer</title>
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#0047AB">
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/0047AB/FFFFFF.png?text=RV">
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -200,7 +201,8 @@
             signOut, onAuthStateChanged, updateProfile 
         } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
         import { 
-            getFirestore, collection, doc, setDoc, getDoc, getDocs, 
+            initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+            collection, doc, setDoc, getDoc, getDocs, 
             updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, 
             addDoc, limit, onSnapshot
         } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -218,7 +220,11 @@
 
         const fbApp = initializeApp(firebaseConfig);
         const auth = getAuth(fbApp);
-        const db = getFirestore(fbApp);
+        
+        // Initialize Firestore with Offline Persistence Enabled
+        const db = initializeFirestore(fbApp, {
+            localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+        });
         
         let messaging = null;
         try {
@@ -334,6 +340,10 @@
             authMode: 'login',
 
             init: () => {
+                // Set up Offline/Online status listeners
+                window.addEventListener('offline', () => UI.toast("You are offline. Displaying cached data.", "error"));
+                window.addEventListener('online', () => UI.toast("Back online! Connection restored.", "success"));
+
                 const isValidEnv = window.location.protocol === 'http:' || window.location.protocol === 'https:';
                 if ('serviceWorker' in navigator && isValidEnv) {
                     navigator.serviceWorker.register('./sw.js').catch(e => {
@@ -379,7 +389,15 @@
                                 app.buildNavigation();
                                 app.setupRealtimeListeners();
                                 app.updateUnreadBadge();
-                                app.navigate('dashboard');
+                                
+                                // Check for App Icon Shortcuts (Deep Linking)
+                                const urlParams = new URLSearchParams(window.location.search);
+                                const viewParam = urlParams.get('view');
+                                if (viewParam && app.views[viewParam]) {
+                                    app.navigate(viewParam);
+                                } else {
+                                    app.navigate('dashboard');
+                                }
 
                                 if ('Notification' in window && Notification.permission === 'granted') {
                                     app.setupFCMToken();
