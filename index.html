@@ -517,7 +517,6 @@
                     { id: 'dashboard', icon: 'ph-squares-four', label: 'Dashboard' },
                     { id: 'opportunities', icon: 'ph-calendar-check', label: 'Shifts' },
                     { id: 'announcements', icon: 'ph-megaphone', label: 'Updates' },
-                    { id: 'leaderboard', icon: 'ph-trophy', label: 'Leaders' },
                     { id: 'chat', icon: 'ph-shooting-star', label: 'Scout AI' }
                 ];
                 if (appState.isAdmin) navItems.push({ id: 'admin', icon: 'ph-shield-check', label: 'Admin Console' });
@@ -612,7 +611,7 @@
                         </header>
                         
                         <!-- Top 3 Podium -->
-                        <div id="leaderboard-podium" class="flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 mb-12 hidden">
+                        <div id="leaderboard-podium" class="flex flex-row items-end justify-center gap-2 sm:gap-4 md:gap-8 mb-10 md:mb-12 mt-4 hidden px-1">
                             <!-- Populated by JS -->
                         </div>
 
@@ -806,21 +805,21 @@
                                 const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
                                 const isFirst = u.rank === 1;
                                 const isSecond = u.rank === 2;
-                                const bgStyle = isFirst ? 'bg-gradient-to-t from-yellow-100 to-yellow-50 border-yellow-200 h-48 md:h-56 shadow-lg transform -translate-y-4 z-10' : 
-                                              (isSecond ? 'bg-gradient-to-t from-gray-100 to-gray-50 border-gray-200 h-40 md:h-48' : 'bg-gradient-to-t from-amber-100/50 to-amber-50/50 border-amber-200/50 h-36 md:h-44 opacity-90');
+                                const bgStyle = isFirst ? 'bg-gradient-to-t from-yellow-100 to-yellow-50 border-yellow-200 h-32 sm:h-48 md:h-56 shadow-lg transform -translate-y-2 md:-translate-y-4 z-10' : 
+                                              (isSecond ? 'bg-gradient-to-t from-gray-100 to-gray-50 border-gray-200 h-24 sm:h-40 md:h-48' : 'bg-gradient-to-t from-amber-100/50 to-amber-50/50 border-amber-200/50 h-20 sm:h-36 md:h-44 opacity-90');
                                 const medalColor = isFirst ? 'text-yellow-500' : (isSecond ? 'text-gray-400' : 'text-amber-600');
                                 const medalBg = isFirst ? 'bg-yellow-100' : (isSecond ? 'bg-gray-100' : 'bg-amber-100');
                                 
                                 return `
-                                    <div class="flex-1 flex flex-col items-center justify-end w-full max-w-[140px] md:max-w-[200px]">
-                                        <div class="relative mb-3">
-                                            <div class="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-2xl md:text-3xl shadow-md border-4 border-white ${isFirst ? 'ring-4 ring-yellow-400/30' : ''}">${init}</div>
-                                            <div class="absolute -bottom-2 -right-2 w-8 h-8 rounded-full ${medalBg} ${medalColor} border-2 border-white flex items-center justify-center font-bold text-sm shadow-sm"><i class="ph-fill ph-medal"></i></div>
+                                    <div class="flex-1 flex flex-col items-center justify-end w-full max-w-[100px] sm:max-w-[140px] md:max-w-[200px]">
+                                        <div class="relative mb-2 md:mb-3">
+                                            <div class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-xl sm:text-2xl md:text-3xl shadow-md border-2 md:border-4 border-white ${isFirst ? 'ring-2 md:ring-4 ring-yellow-400/30' : ''}">${init}</div>
+                                            <div class="absolute -bottom-1 -right-1 md:-bottom-2 md:-right-2 w-5 h-5 sm:w-8 sm:h-8 rounded-full ${medalBg} ${medalColor} border border-white md:border-2 flex items-center justify-center font-bold text-[10px] md:text-sm shadow-sm"><i class="ph-fill ph-medal"></i></div>
                                         </div>
-                                        <div class="w-full rounded-t-3xl border-t-2 border-x-2 flex flex-col items-center pt-6 px-2 text-center transition-all duration-500 ${bgStyle}">
-                                            <h4 class="font-bold text-gray-900 text-sm md:text-base leading-tight truncate w-full">${UI.escapeHtml(u.firstName)}</h4>
-                                            <p class="text-xs text-gray-500 truncate w-full mb-2">${UI.escapeHtml(u.lastName?.charAt(0))}.</p>
-                                            <span class="text-lg md:text-2xl font-black ${medalColor} drop-shadow-sm font-mono mt-auto pb-4">${(u.totalHours || 0).toFixed(1)}<span class="text-sm font-bold opacity-70">h</span></span>
+                                        <div class="w-full rounded-t-2xl md:rounded-t-3xl border-t-2 border-x-2 flex flex-col items-center pt-3 sm:pt-6 px-1 md:px-2 text-center transition-all duration-500 ${bgStyle}">
+                                            <h4 class="font-bold text-gray-900 text-[10px] sm:text-sm md:text-base leading-tight truncate w-full">${UI.escapeHtml(u.firstName)}</h4>
+                                            <p class="text-[9px] sm:text-xs text-gray-500 truncate w-full mb-1 md:mb-2">${UI.escapeHtml(u.lastName?.charAt(0))}.</p>
+                                            <span class="text-xs sm:text-lg md:text-2xl font-black ${medalColor} drop-shadow-sm font-mono mt-auto pb-2 md:pb-4">${(u.totalHours || 0).toFixed(1)}<span class="text-[8px] sm:text-sm font-bold opacity-70">h</span></span>
                                         </div>
                                     </div>
                                 `;
