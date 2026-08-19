@@ -26,25 +26,26 @@ messaging.onBackgroundMessage((payload) => {
     self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-const CACHE_NAME = 'rylee-vol-v1';
+const CACHE_NAME = 'rylee-vol-v2';
 const STATIC_ASSETS = [
     './index.html',
-    './manifest.json',
-    'https://cdn.tailwindcss.com',
-    'https://unpkg.com/@phosphor-icons/web',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+    './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
+    self.skipWaiting(); // Force the worker to activate immediately
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(STATIC_ASSETS);
+            // Safely cache files without crashing the whole worker if one fails
+            return Promise.allSettled(
+                STATIC_ASSETS.map(url => cache.add(url).catch(e => console.warn('Cache skip:', url)))
+            );
         })
     );
-    self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+    event.waitUntil(self.clients.claim()); // Take control of the page immediately
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
@@ -58,7 +59,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     
     // Bypass caching for Firebase API/Firestore completely to ensure security and live data
-    if (url.hostname.includes('firestore.googleapis.com') || url.hostname.includes('firebase') || url.hostname.includes('identitytoolkit')) {
+    if (url.hostname.includes('googleapis.com') || url.hostname.includes('firebase') || url.hostname.includes('identitytoolkit')) {
         return; 
     }
 
