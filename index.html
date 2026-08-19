@@ -641,13 +641,10 @@
                         return false;
                     }
                     
-                    UI.toast("Registering service worker...", "info");
-                    
                     // Register without forcing an immediate update, which crashes on some mobile browsers
                     const registration = await navigator.serviceWorker.register('./sw.js');
                     const readyReg = await navigator.serviceWorker.ready;
                     
-                    UI.toast("Asking Google for secure token...", "info");
                     const vapidKey = "BGGIJRt1rLfyCPVoJK0ufqrdP3HcOHIwL-tHFDocbLxJz22TjDrdX8R_r_2aVqhHSiHmICNoa8vzoSkB0EKjDpI"; 
                     
                     // Wrap getToken in a timeout so it can't hang forever silently
@@ -661,7 +658,6 @@
                     const token = await Promise.race([tokenPromise, timeoutPromise]);
                     
                     if (token) {
-                        UI.toast("Saving token to profile...", "info");
                         await updateDoc(doc(db, "users", auth.currentUser.uid), { fcmToken: token });
                         return true;
                     } else {
