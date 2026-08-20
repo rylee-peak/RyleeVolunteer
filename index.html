@@ -1301,34 +1301,73 @@
                     const requiredAttr = field.required ? 'required' : '';
                     const reqAsterisk = field.required ? '<span class="text-red-500">*</span>' : '';
                     
-                    html += `<div class="mb-4">
-                        <label class="block text-xs font-bold text-gray-500 mb-1">${UI.escapeHtml(field.label)} ${reqAsterisk}</label>`;
+                    html += `<div class="mb-5">
+                        <label class="block text-xs font-bold text-gray-500 mb-2">${UI.escapeHtml(field.label)} ${reqAsterisk}</label>`;
                         
                     switch(field.type) {
                         case 'text':
                         case 'email':
-                            html += `<input type="${field.type}" id="dyn_${field.id}" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">`;
+                            html += `<input type="${field.type}" id="dyn_${field.id}" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-campaign-blue focus:ring-1">`;
                             break;
                         case 'textarea':
-                            html += `<textarea id="dyn_${field.id}" rows="2" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1"></textarea>`;
+                            html += `<textarea id="dyn_${field.id}" rows="2" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-campaign-blue focus:ring-1"></textarea>`;
                             break;
                         case 'select':
                             const options = (field.options || []).map(opt => `<option value="${UI.escapeHtml(opt)}">${UI.escapeHtml(opt)}</option>`).join('');
-                            html += `<select id="dyn_${field.id}" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1 bg-white">
+                            html += `<select id="dyn_${field.id}" ${requiredAttr} class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-campaign-blue focus:ring-1 bg-white">
                                 <option value="">Select...</option>${options}
                             </select>`;
                             break;
                         case 'checkbox':
-                            html += `<label class="flex items-center gap-2 text-sm text-gray-800"><input type="checkbox" id="dyn_${field.id}" ${requiredAttr} class="w-4 h-4 text-campaign-blue rounded border-gray-300 focus:ring-campaign-blue"> Yes</label>`;
+                            html += `
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                <span class="text-sm font-medium text-gray-700">Yes / Enabled</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="dyn_${field.id}" ${requiredAttr} class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-campaign-blue"></div>
+                                </label>
+                            </div>`;
                             break;
                         case 'stars':
-                            html += `<input type="number" id="dyn_${field.id}" ${requiredAttr} min="1" max="5" placeholder="1-5" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1">`;
+                            html += `
+                            <input type="hidden" id="dyn_${field.id}" name="dyn_${field.id}" value="" ${requiredAttr}>
+                            <div class="flex items-center gap-2 py-1" id="star_group_${field.id}">
+                                ${[1, 2, 3, 4, 5].map(starNum => `
+                                    <button type="button" onclick="app.setStarRating('${field.id}', ${starNum})" class="star-btn-${field.id} text-3xl text-gray-300 hover:text-yellow-400 transition-colors focus:outline-none" data-value="${starNum}">
+                                        <i class="ph-fill ph-star"></i>
+                                    </button>
+                                `).join('')}
+                                <span id="star_label_${field.id}" class="text-xs font-bold text-gray-400 ml-2">Unrated</span>
+                            </div>`;
                             break;
                     }
                     html += `</div>`;
                 });
                 
                 container.innerHTML = html;
+            },
+
+            setStarRating: (fieldId, rating) => {
+                const hiddenInput = document.getElementById(`dyn_${fieldId}`);
+                if (hiddenInput) hiddenInput.value = rating;
+
+                const starBtns = document.querySelectorAll(`.star-btn-${fieldId}`);
+                starBtns.forEach(btn => {
+                    const val = parseInt(btn.getAttribute('data-value'));
+                    if (val <= rating) {
+                        btn.classList.remove('text-gray-300');
+                        btn.classList.add('text-yellow-400');
+                    } else {
+                        btn.classList.remove('text-yellow-400');
+                        btn.classList.add('text-gray-300');
+                    }
+                });
+
+                const label = document.getElementById(`star_label_${fieldId}`);
+                if (label) {
+                    label.innerText = `${rating} / 5 Stars`;
+                    label.className = "text-xs font-bold text-campaign-blue ml-2";
+                }
             },
 
             getLocation: () => {
