@@ -76,6 +76,14 @@
         
         /* Map Styles */
         #canvass-map { height: 100%; width: 100%; z-index: 10; }
+        
+        /* Custom Switch Styles */
+        .ios-switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .ios-switch input { opacity: 0; width: 0; height: 0; }
+        .ios-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 34px; }
+        .ios-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .ios-switch input:checked + .ios-slider { background-color: #3CAEA3; }
+        .ios-switch input:checked + .ios-slider:before { transform: translateX(22px); }
     </style>
 </head>
 <body class="text-gray-800 antialiased overflow-hidden">
@@ -233,7 +241,7 @@
             user: null, profile: null, isAdmin: false, currentView: 'dashboard', 
             users: [], unsubscribes: [], loadTime: Date.now(), 
             sessionId: Math.random().toString(36).substring(2), timeEntry: null, clockInterval: null,
-            canvassMap: null, canvassFormSchema: []
+            canvassMap: null, canvassFormSchema: [], canvassSchemaMap: {}, editingOppId: null, allOpps: []
         };
 
         const UI = {
@@ -806,13 +814,13 @@
                             
                             <!-- Recenter GPS Button -->
                             <div class="absolute bottom-44 md:bottom-28 right-4 z-[400]">
-                                <button onclick="app.recenterMap(this)" class="bg-white text-campaign-blue w-12 h-12 rounded-full shadow-lg border border-gray-200 flex items-center justify-center hover:bg-blue-50 transition shadow-xl">
+                                <button onclick="app.recenterMap(this)" class="bg-white text-campaign-blue w-12 h-12 rounded-full shadow-xl border border-gray-200 flex items-center justify-center hover:bg-blue-50 transition">
                                     <i class="ph-bold ph-crosshair text-2xl"></i>
                                 </button>
                             </div>
 
-                            <div class="absolute bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 z-[400] w-full px-6 flex justify-center mt-6 md:mt-0">
-                                <button onclick="app.startDoorLogFromMap()" class="w-full sm:w-auto bg-campaign-teal text-white px-8 py-4 rounded-full font-bold shadow-xl hover:bg-teal-600 transition flex items-center justify-center gap-2 text-lg border-2 border-white/20 mb-8 md:mb-0">
+                            <div class="absolute bottom-24 md:bottom-12 left-1/2 transform -translate-x-1/2 z-[400] w-full px-6 flex justify-center mt-6 md:mt-0 mb-8 md:mb-0">
+                                <button onclick="app.startDoorLogFromMap()" class="w-full sm:w-auto bg-campaign-teal text-white px-8 py-4 rounded-full font-bold shadow-xl hover:bg-teal-600 transition flex items-center justify-center gap-2 text-lg border-2 border-white/20">
                                     <i class="ph-bold ph-door"></i> Log This Door
                                 </button>
                             </div>
@@ -1256,10 +1264,20 @@
             },
 
             initCanvassMap: async () => {
+                // Ensure we have the human-readable labels mapped out for the popups
+                appState.canvassSchemaMap = {};
+                try {
+                    const formDoc = await getDoc(doc(db, "campaignSettings", "canvassForm"));
+                    if (formDoc.exists() && formDoc.data().fields) {
+                        formDoc.data().fields.forEach(f => appState.canvassSchemaMap[f.id] = f.label);
+                    }
+                } catch(e) {}
+
                 if (appState.canvassMap) appState.canvassMap.invalidateSize();
                 else {
                     appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 19); 
                     
+                    // High-res Hybrid Satellite Map
                     L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
                         maxZoom: 21,
                         attribution: '© Google'
@@ -1267,7 +1285,15 @@
 
                     appState.canvassMap.on('click', function(e) {
                         if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
-                        appState.currentPin = L.marker(e.latlng).addTo(appState.canvassMap);
+                        
+                        const currentIcon = L.divIcon({
+                            className: 'bg-transparent',
+                            html: '<div class="w-5 h-5 rounded-full bg-campaign-blue border-4 border-white shadow-[0_0_10px_rgba(0,71,171,0.6)] flex items-center justify-center animate-pulse"></div>',
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+                        
+                        appState.currentPin = L.marker(e.latlng, { icon: currentIcon }).addTo(appState.canvassMap);
                         appState.selectedLocation = e.latlng;
                     });
                 }
@@ -1276,6 +1302,14 @@
                     const response = await fetch('https://api.voterylee.com/api/canvass');
                     if (response.ok) {
                         const logs = await response.json();
+                        
+                        const loggedIcon = L.divIcon({
+                            className: 'bg-transparent',
+                            html: '<div class="w-4 h-4 rounded-full bg-campaign-teal border-2 border-white shadow-md"></div>',
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        });
+
                         logs.forEach(log => {
                             if (log.gps) {
                                 const [lat, lng] = log.gps.split(',').map(n => parseFloat(n.trim()));
@@ -1285,9 +1319,9 @@
                                         respHtml = '<div class="mt-2 pt-2 border-t border-gray-200 space-y-1">';
                                         for (const [key, val] of Object.entries(log.responses)) {
                                             if (val === '' || val === false || val === null) continue;
-                                            const niceKey = key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                            const niceKey = appState.canvassSchemaMap[key] || key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                             const niceVal = typeof val === 'boolean' ? 'Yes' : UI.escapeHtml(val.toString());
-                                            respHtml += `<div class="text-xs"><span class="font-bold text-campaign-blue">${niceKey}:</span> <span class="text-gray-700">${niceVal}</span></div>`;
+                                            respHtml += `<div class="text-xs"><span class="font-bold text-campaign-blue">${UI.escapeHtml(niceKey)}:</span> <span class="text-gray-700">${niceVal}</span></div>`;
                                         }
                                         respHtml += '</div>';
                                     }
@@ -1300,7 +1334,7 @@
                                         </div>
                                     `;
                                     
-                                    L.marker([lat, lng]).addTo(appState.canvassMap).bindPopup(popupContent);
+                                    L.marker([lat, lng], { icon: loggedIcon }).addTo(appState.canvassMap).bindPopup(popupContent);
                                 }
                             }
                         });
@@ -1309,10 +1343,18 @@
                             appState.canvassMap.setView([pos.coords.latitude, pos.coords.longitude], 19);
                             if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
                             appState.selectedLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                            appState.currentPin = L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(appState.canvassMap);
+                            
+                            const currentIcon = L.divIcon({
+                                className: 'bg-transparent',
+                                html: '<div class="w-5 h-5 rounded-full bg-campaign-blue border-4 border-white shadow-[0_0_10px_rgba(0,71,171,0.6)] flex items-center justify-center animate-pulse"></div>',
+                                iconSize: [20, 20],
+                                iconAnchor: [10, 10]
+                            });
+
+                            appState.currentPin = L.marker([pos.coords.latitude, pos.coords.longitude], { icon: currentIcon }).addTo(appState.canvassMap);
                         }, () => {}, {timeout: 3000, enableHighAccuracy: true});
                     }
-                } catch(e) { console.error("Could not fetch map points from OptiPlex", e); }
+                } catch(e) { console.error("Could not fetch map points from server", e); }
             },
 
             recenterMap: (btn) => {
@@ -1328,7 +1370,15 @@
                     appState.canvassMap.setView([lat, lng], 20); 
                     if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
                     appState.selectedLocation = { lat, lng };
-                    appState.currentPin = L.marker([lat, lng]).addTo(appState.canvassMap);
+                    
+                    const currentIcon = L.divIcon({
+                        className: 'bg-transparent',
+                        html: '<div class="w-5 h-5 rounded-full bg-campaign-blue border-4 border-white shadow-[0_0_10px_rgba(0,71,171,0.6)] flex items-center justify-center animate-pulse"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+
+                    appState.currentPin = L.marker([lat, lng], { icon: currentIcon }).addTo(appState.canvassMap);
                     
                     btn.innerHTML = originalIcon;
                 }, () => {
@@ -1363,9 +1413,9 @@
                         let zip = addr.postcode || '';
                         
                         if (houseNum && street) {
-                            addressInput.value = `${houseNum} ${street}, ${city}, ${state} ${zip}`.trim();
+                            addressInput.value = `${houseNum} ${street}\n${city}, ${state} ${zip}`.trim();
                         } else if (street) {
-                            addressInput.value = `${street}, ${city}, ${state} ${zip} (No house number found)`.trim();
+                            addressInput.value = `${street}\n${city}, ${state} ${zip}`.trim();
                         } else {
                             addressInput.value = data.display_name;
                         }
@@ -1408,10 +1458,10 @@
                             break;
                         case 'checkbox':
                             html += `
-                            <div class="flex items-center p-3 bg-gray-50 rounded-xl border border-gray-200">
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="dyn_${field.id}" ${requiredAttr} class="sr-only peer">
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-campaign-blue"></div>
+                            <div class="flex items-center">
+                                <label class="ios-switch">
+                                  <input type="checkbox" id="dyn_${field.id}" ${requiredAttr}>
+                                  <span class="ios-slider"></span>
                                 </label>
                             </div>`;
                             break;
@@ -1420,7 +1470,7 @@
                             <input type="hidden" id="dyn_${field.id}" name="dyn_${field.id}" value="" ${requiredAttr}>
                             <div class="flex items-center gap-2 py-1" id="star_group_${field.id}">
                                 ${[1, 2, 3, 4, 5].map(starNum => `
-                                    <button type="button" onclick="app.setStarRating('${field.id}', ${starNum})" class="star-btn-${field.id} text-3xl text-gray-300 hover:text-yellow-400 transition-colors focus:outline-none" data-value="${starNum}">
+                                    <button type="button" onclick="app.setStarRating('${field.id}', ${starNum})" class="star-btn-${field.id} text-4xl text-gray-300 hover:text-yellow-400 transition-colors focus:outline-none" data-value="${starNum}">
                                         <i class="ph-fill ph-star"></i>
                                     </button>
                                 `).join('')}
@@ -1443,9 +1493,9 @@
                     const val = parseInt(btn.getAttribute('data-value'));
                     if (val <= rating) {
                         btn.classList.remove('text-gray-300');
-                        btn.classList.add('text-yellow-400');
+                        btn.classList.add('text-campaign-yellow');
                     } else {
-                        btn.classList.remove('text-yellow-400');
+                        btn.classList.remove('text-campaign-yellow');
                         btn.classList.add('text-gray-300');
                     }
                 });
@@ -1507,7 +1557,7 @@
                 pending.push(logData);
                 localStorage.setItem('pendingCanvassLogs', JSON.stringify(pending));
                 
-                UI.toast(`Saved locally! Attempting direct OptiPlex sync...`);
+                UI.toast(`Saved locally! Attempting direct server sync...`);
                 
                 document.getElementById('canvass-address').value = '';
                 appState.canvassFormSchema.forEach(field => {
@@ -1539,7 +1589,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(log)
                         });
-                        if (!response.ok) throw new Error('OptiPlex unreachable');
+                        if (!response.ok) throw new Error('Server unreachable');
                     } catch (e) {
                         stillPending.push(log);
                     }
@@ -1547,7 +1597,7 @@
 
                 localStorage.setItem('pendingCanvassLogs', JSON.stringify(stillPending));
                 if (pending.length > stillPending.length && stillPending.length === 0) {
-                     UI.toast("Offline knocks synced securely to OptiPlex!", "success");
+                     UI.toast("Offline knocks synced securely to the database!", "success");
                 }
             },
 
@@ -1555,8 +1605,12 @@
                 UI.showLoading(container.id);
                 try {
                     let fields = [];
+                    appState.canvassSchemaMap = {};
                     const formDoc = await getDoc(doc(db, "campaignSettings", "canvassForm"));
-                    if (formDoc.exists() && formDoc.data().fields) fields = formDoc.data().fields;
+                    if (formDoc.exists() && formDoc.data().fields) {
+                        fields = formDoc.data().fields;
+                        fields.forEach(f => appState.canvassSchemaMap[f.id] = f.label);
+                    }
 
                     let fieldsHtml = fields.length === 0 ? '<p class="text-sm text-gray-500 italic p-4 text-center">No fields added yet.</p>' : 
                         fields.map((f, i) => `
@@ -1568,7 +1622,7 @@
                             <button onclick="app.adminDeleteCanvassField(${i})" class="text-red-400 p-1 hover:text-red-600"><i class="ph-bold ph-trash"></i></button>
                         </div>`).join('');
 
-                    let logsHtml = '<div class="p-8 text-center"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent mx-auto"></div><p class="text-xs text-gray-500 mt-2">Connecting to OptiPlex...</p></div>';
+                    let logsHtml = '<div class="p-8 text-center"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent mx-auto"></div><p class="text-xs text-gray-500 mt-2">Connecting to database server...</p></div>';
                     try {
                         const res = await fetch('https://api.voterylee.com/api/canvass');
                         if (res.ok) {
@@ -1584,9 +1638,9 @@
                                     if (l.responses && Object.keys(l.responses).length > 0) {
                                         for (const [key, val] of Object.entries(l.responses)) {
                                             if (val === '' || val === false || val === null) continue;
-                                            const niceKey = key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                            const niceKey = appState.canvassSchemaMap[key] || key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                                             const niceVal = typeof val === 'boolean' ? 'Yes' : UI.escapeHtml(val.toString());
-                                            respBadges += `<div class="text-[10px] bg-blue-50 text-blue-800 border border-blue-100 px-1.5 py-0.5 rounded inline-block mr-1 mb-1 shadow-sm"><b class="font-bold">${niceKey}:</b> ${niceVal}</div>`;
+                                            respBadges += `<div class="text-[10px] bg-blue-50 text-blue-800 border border-blue-100 px-1.5 py-0.5 rounded inline-block mr-1 mb-1 shadow-sm"><b class="font-bold">${UI.escapeHtml(niceKey)}:</b> ${niceVal}</div>`;
                                         }
                                     }
                                     if (!respBadges) respBadges = '<span class="text-[10px] text-gray-400 italic">No survey data collected.</span>';
@@ -1596,10 +1650,10 @@
                                 `</tbody></table></div>`;
                             }
                         } else {
-                            logsHtml = '<p class="text-red-500 text-sm p-4">Error: Could not retrieve data from OptiPlex.</p>';
+                            logsHtml = '<p class="text-red-500 text-sm p-4">Error: Could not retrieve data from server.</p>';
                         }
                     } catch(e) {
-                        logsHtml = '<p class="text-red-500 text-sm p-4">Error: Could not connect to OptiPlex API.</p>';
+                        logsHtml = '<p class="text-red-500 text-sm p-4">Error: Could not connect to server API.</p>';
                     }
 
                     container.innerHTML = `
@@ -1689,12 +1743,12 @@
                     try {
                         const res = await fetch(`https://api.voterylee.com/api/canvass/${id}`, { method: 'DELETE' });
                         if(res.ok) {
-                            UI.toast("Log deleted from OptiPlex!");
+                            UI.toast("Log deleted securely!");
                             app.adminTab('canvass');
                         } else {
                             UI.toast("Failed to delete log.", "error");
                         }
-                    } catch(e) { UI.toast("Error connecting to OptiPlex.", "error"); }
+                    } catch(e) { UI.toast("Error connecting to server.", "error"); }
                 });
             },
 
@@ -2013,7 +2067,10 @@
                                         <input type="file" id="admin-ann-img" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-campaign-blue hover:file:bg-blue-100 cursor-pointer">
                                         <p class="text-[10px] text-gray-400 mt-1">Photos are securely hosted on your private server.</p>
                                     </div>
-                                    <div class="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 mt-2"><label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" id="admin-ann-pinned" class="rounded border-gray-300 text-campaign-blue focus:ring-campaign-blue w-4 h-4"> Pin to top</label></div>
+                                    <div class="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 mt-2">
+                                        <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" id="admin-ann-pinned" class="rounded border-gray-300 text-campaign-blue focus:ring-campaign-blue w-4 h-4"> Pin to top</label>
+                                        <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" id="admin-ann-notify" checked class="rounded border-gray-300 text-campaign-blue focus:ring-campaign-blue w-4 h-4"> Send Email & Push Alert</label>
+                                    </div>
                                     <button type="submit" id="admin-ann-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Post Announcement</button>
                                 </form>
 
@@ -2042,6 +2099,9 @@
                 try { 
                     let imageUrl = null;
                     const fileInput = document.getElementById('admin-ann-img');
+                    const doNotify = document.getElementById('admin-ann-notify').checked;
+                    const title = document.getElementById('admin-ann-title').value.trim();
+                    const body = document.getElementById('admin-ann-body').value.trim();
                     
                     if (fileInput.files.length > 0) {
                         const formData = new FormData();
@@ -2059,14 +2119,19 @@
                     }
 
                     await addDoc(collection(db, "announcements"), { 
-                        title: document.getElementById('admin-ann-title').value.trim(), 
-                        body: document.getElementById('admin-ann-body').value.trim(), 
+                        title: title, 
+                        body: body, 
                         imageUrl: imageUrl, 
                         pinned: document.getElementById('admin-ann-pinned').checked, 
                         author: appState.profile.firstName + ' ' + appState.profile.lastName, 
                         createdAt: serverTimestamp() 
                     }); 
                     
+                    if (doNotify) {
+                        await addDoc(collection(db, "pushAlerts"), { message: `New Update: ${title}`, author: `${appState.profile.firstName} ${appState.profile.lastName}`, createdAt: serverTimestamp() });
+                        await addDoc(collection(db, "mail_queue"), { subject: `Campaign Update: ${title}`, body: `${body}\n\nOpen the RyleeVolunteer app to read more!`, status: 'pending', createdAt: serverTimestamp(), author: `${appState.profile.firstName} ${appState.profile.lastName}` });
+                    }
+
                     UI.toast("Posted!"); 
                     app.adminTab('announcements'); 
                 } catch(e) { 
@@ -2085,7 +2150,7 @@
                         body: document.getElementById('admin-email-body').value.trim(),
                         status: 'pending', createdAt: serverTimestamp(), author: appState.profile.firstName + ' ' + appState.profile.lastName
                     });
-                    UI.toast("Email blast queued for OptiPlex delivery!"); 
+                    UI.toast("Email blast queued for delivery!"); 
                     document.getElementById('admin-email-sub').value = ''; document.getElementById('admin-email-body').value = '';
                 } catch(e) { UI.toast("Error queuing email.", "error"); }
                 btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-envelope-simple"></i> Send Email Blast';
@@ -2096,7 +2161,8 @@
             renderAdminOpportunities: async (container) => {
                 try {
                     const snap = await getDocs(query(collection(db, "opportunities"), orderBy("date", "desc")));
-                    let rows = snap.docs.map(d => { const data = d.data(); return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm font-bold">${UI.escapeHtml(data.title)}</td><td class="p-3 text-sm">${UI.escapeHtml(data.date)}</td><td class="p-3 text-right space-x-2"><button onclick="app.adminViewSignups('${d.id}', '${UI.escapeHtml(data.title).replace(/'/g, "\\'")}')" class="text-campaign-blue p-1 px-2 text-xs font-bold bg-blue-50 rounded">Signups</button><button onclick="app.adminDeleteOpp('${d.id}')" class="text-red-400 p-1"><i class="ph-bold ph-trash"></i></button></td></tr>`; }).join('');
+                    appState.allOpps = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    let rows = appState.allOpps.map(data => { return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm font-bold">${UI.escapeHtml(data.title)}</td><td class="p-3 text-sm">${UI.escapeHtml(data.date)}</td><td class="p-3 text-right space-x-1"><button onclick="app.adminViewSignups('${data.id}', '${UI.escapeHtml(data.title).replace(/'/g, "\\'")}')" class="text-campaign-blue p-1 px-2 text-xs font-bold bg-blue-50 rounded">Signups</button><button onclick="app.adminEditOpp('${data.id}')" class="text-gray-500 hover:text-campaign-blue p-1 transition" title="Edit Shift"><i class="ph-bold ph-pencil-simple"></i></button><button onclick="app.adminDeleteOpp('${data.id}')" class="text-red-400 p-1" title="Delete Shift"><i class="ph-bold ph-trash"></i></button></td></tr>`; }).join('');
                     
                     container.innerHTML = `
                         <div class="flex flex-col md:flex-row">
@@ -2112,6 +2178,7 @@
                                         <input type="file" id="admin-opp-img" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-campaign-blue hover:file:bg-blue-100 cursor-pointer">
                                     </div>
                                     <button type="submit" id="admin-opp-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Create Event</button>
+                                    <button type="button" id="admin-opp-cancel-btn" onclick="app.adminCancelEditOpp()" class="hidden w-full bg-gray-100 hover:bg-gray-200 transition text-gray-700 rounded p-2 font-bold text-sm mt-2">Cancel Edit</button>
                                 </form>
                             </div>
                             <div class="w-full md:w-2/3 p-4">
@@ -2123,10 +2190,41 @@
                 } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading opportunities.</p>'; }
             },
 
+            adminEditOpp: (id) => {
+                const opp = appState.allOpps.find(o => o.id === id);
+                if (!opp) return;
+                
+                document.getElementById('admin-opp-title').value = opp.title || '';
+                document.getElementById('admin-opp-date').value = opp.date || '';
+                document.getElementById('admin-opp-time').value = opp.time || '';
+                document.getElementById('admin-opp-location').value = opp.location || '';
+                document.getElementById('admin-opp-desc').value = opp.description || '';
+                
+                appState.editingOppId = id;
+                document.getElementById('admin-opp-btn').innerText = 'Update Event';
+                document.getElementById('admin-opp-btn').className = 'w-full bg-campaign-teal text-white rounded p-2 font-bold text-sm';
+                document.getElementById('admin-opp-cancel-btn').classList.remove('hidden');
+            },
+
+            adminCancelEditOpp: () => {
+                appState.editingOppId = null;
+                document.getElementById('admin-opp-title').value = '';
+                document.getElementById('admin-opp-date').value = '';
+                document.getElementById('admin-opp-time').value = '';
+                document.getElementById('admin-opp-location').value = '';
+                document.getElementById('admin-opp-desc').value = '';
+                document.getElementById('admin-opp-img').value = '';
+                
+                document.getElementById('admin-opp-btn').innerText = 'Create Event';
+                document.getElementById('admin-opp-btn').className = 'w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm';
+                document.getElementById('admin-opp-cancel-btn').classList.add('hidden');
+            },
+
             adminCreateOpp: async () => { 
                 const btn = document.getElementById('admin-opp-btn'); 
+                const isEditing = !!appState.editingOppId;
                 btn.disabled = true; 
-                btn.innerText = 'Creating...'; 
+                btn.innerText = isEditing ? 'Updating...' : 'Creating...'; 
                 
                 try { 
                     let imageUrl = null;
@@ -2145,21 +2243,30 @@
                         }
                     }
 
-                    await addDoc(collection(db, "opportunities"), { 
+                    const oppData = {
                         title: document.getElementById('admin-opp-title').value.trim(), 
                         date: document.getElementById('admin-opp-date').value, 
                         time: document.getElementById('admin-opp-time').value.trim(), 
                         location: document.getElementById('admin-opp-location').value.trim(), 
                         description: document.getElementById('admin-opp-desc').value.trim(), 
-                        imageUrl: imageUrl,
-                        createdAt: serverTimestamp() 
-                    }); 
-                    UI.toast("Event created!"); 
+                    };
+                    if (imageUrl) oppData.imageUrl = imageUrl;
+
+                    if (isEditing) {
+                        await updateDoc(doc(db, "opportunities", appState.editingOppId), oppData);
+                        UI.toast("Event updated successfully!");
+                    } else {
+                        oppData.createdAt = serverTimestamp();
+                        await addDoc(collection(db, "opportunities"), oppData); 
+                        UI.toast("Event created!"); 
+                    }
+                    
+                    appState.editingOppId = null;
                     app.adminTab('opportunities'); 
                 } catch(e) { 
-                    UI.toast("Error creating.", "error"); 
-                    btn.disabled=false; 
-                    btn.innerText='Create Event'; 
+                    UI.toast("Error saving event.", "error"); 
+                    btn.disabled = false; 
+                    btn.innerText = isEditing ? 'Update Event' : 'Create Event'; 
                 } 
             },
 
