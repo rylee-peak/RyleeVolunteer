@@ -108,14 +108,14 @@
         <img id="lightbox-img" src="" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl transform scale-95 transition-transform duration-300">
     </div>
 
-    <div id="landing-page" class="hidden fixed inset-0 bg-white overflow-y-auto z-40">
-        <nav class="p-6 pt-[max(env(safe-area-inset-top),1.5rem)] flex justify-between items-center max-w-6xl mx-auto">
+    <div id="landing-page" class="hidden fixed inset-0 bg-white overflow-y-auto z-40 flex flex-col">
+        <nav class="p-6 pt-[max(env(safe-area-inset-top),1.5rem)] flex justify-between items-center max-w-6xl mx-auto w-full">
             <div class="flex items-center gap-2 text-campaign-blue font-bold text-xl tracking-tight">
                 <i class="ph-fill ph-hands-clapping text-2xl"></i> Vote Rylee
             </div>
             <button onclick="app.showAuth('login')" class="bg-campaign-blue text-white px-6 py-2 rounded-full font-medium hover:bg-blue-800 transition shadow-sm">Sign In / Register</button>
         </nav>
-        <main class="max-w-6xl mx-auto px-6 py-12 md:py-24 grid md:grid-cols-2 gap-12 items-center">
+        <main class="max-w-6xl mx-auto px-6 py-12 md:py-24 grid md:grid-cols-2 gap-12 items-center flex-1">
             <div>
                 <span class="text-campaign-teal font-bold uppercase tracking-wider text-sm mb-4 block">Official Campaign Platform</span>
                 <h1 class="text-5xl md:text-6xl font-extrabold text-gray-900 leading-tight mb-6">Powering the people behind the campaign.</h1>
@@ -130,9 +130,14 @@
                 <img src="https://placehold.co/800x1000/0047AB/FFFFFF?text=Volunteer+Community" alt="Volunteers" class="relative rounded-3xl shadow-2xl object-cover border-4 border-white">
             </div>
         </main>
+        <footer class="mt-auto pb-8 pt-4 text-center">
+            <div class="inline-block border border-gray-200 px-4 py-2 bg-gray-50 text-[10px] text-gray-500 font-bold uppercase tracking-wider text-center shadow-sm rounded-lg">
+                Paid for by Rylee Peak for Mayor 2026 | FPPC ID: 1481941
+            </div>
+        </footer>
     </div>
 
-    <div id="auth-page" class="hidden fixed inset-0 bg-gray-50 z-40 flex items-center justify-center p-4">
+    <div id="auth-page" class="hidden fixed inset-0 bg-gray-50 z-40 flex flex-col items-center justify-center p-4">
         <div class="bg-white w-full max-w-md p-8 rounded-3xl shadow-xl border border-gray-100 relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-campaign-blue via-campaign-teal to-campaign-yellow"></div>
             
@@ -157,6 +162,12 @@
             
             <div class="mt-6 text-center text-sm"><button id="auth-toggle-btn" onclick="app.toggleAuthMode()" class="text-campaign-blue font-medium hover:underline">Need an account? Register</button></div>
             <div class="mt-4 text-center"><button onclick="app.closeAuth()" class="text-xs text-gray-400 hover:text-gray-600">Back to Website</button></div>
+            
+            <div class="mt-8 border-t border-gray-100 pt-6 text-center">
+                <div class="inline-block border border-gray-200 px-3 py-1.5 bg-gray-50 text-[9px] text-gray-400 font-bold uppercase tracking-wider text-center rounded">
+                    Paid for by Rylee Peak for Mayor 2026<br>FPPC ID: 1481941
+                </div>
+            </div>
         </div>
     </div>
 
@@ -173,7 +184,6 @@
     </div>
 
     <div id="main-app" class="hidden fixed inset-0 w-full flex flex-col md:flex-row bg-gray-50 overflow-hidden" style="height: 100dvh;">
-        
         <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-full flex-shrink-0 relative z-20">
             <div class="p-6 border-b border-gray-100 flex items-center gap-3">
                 <div class="bg-campaign-blue text-white p-2 rounded-lg"><i class="ph-fill ph-hands-clapping text-xl"></i></div>
@@ -357,11 +367,7 @@
                     }).catch(e => { if(e.message && !e.message.includes("'<Location>'") && !e.toString().includes("<")) console.error('SW Error:', e); });
                 }
 
-                if (document.readyState === 'complete' || document.readyState === 'interactive') {
-                    app.performAuthCheck();
-                } else {
-                    document.addEventListener('DOMContentLoaded', app.performAuthCheck);
-                }
+                app.performAuthCheck();
             },
 
             performAuthCheck: () => {
@@ -761,6 +767,7 @@
                 `,
                 tools: () => `<div class="max-w-4xl mx-auto fade-in"><header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Campaign Tools</h2><p class="text-gray-500">Your secure access to third-party software.</p></header><div class="bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-campaign-blue mb-6 flex gap-3"><i class="ph-fill ph-info text-xl shrink-0"></i><p>These credentials are provisioned exclusively for you. <b>Never share these passwords.</b></p></div><div id="tools-list" class="grid md:grid-cols-2 gap-4"></div></div>`,
                 notifications: () => `<div class="max-w-3xl mx-auto fade-in"><header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Inbox</h2><p class="text-gray-500">Catch up on recent campaign activity.</p></header><div id="notifications-list" class="space-y-3"></div></div>`,
+                
                 profile: () => `
                     <div class="max-w-2xl mx-auto fade-in">
                         <header class="mb-6 text-center"><h2 class="text-3xl font-bold text-gray-900 mb-1">My Profile</h2></header>
@@ -795,6 +802,13 @@
                             </form>
                         </div>
                         <div class="bg-red-50 rounded-2xl p-6 border border-red-100"><h3 class="font-bold text-red-800 mb-2">Danger Zone</h3><p class="text-sm text-red-600 mb-4">Permanently delete your account and all associated data.</p><button onclick="app.confirmDeleteAccount()" class="border-2 border-red-200 text-red-600 hover:bg-red-600 hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition">Delete Account</button></div>
+                        
+                        <div class="mt-8 pt-6 border-t border-gray-200 text-center space-y-4">
+                            <button onclick="app.showAboutApp()" class="text-campaign-blue font-bold text-sm hover:underline flex items-center justify-center gap-1 mx-auto"><i class="ph-bold ph-info"></i> About RyleeVolunteer</button>
+                            <div class="inline-block border border-gray-300 px-4 py-2 bg-gray-50 text-[10px] text-gray-500 font-bold uppercase tracking-wider text-center shadow-sm rounded">
+                                Paid for by Rylee Peak for Mayor 2026 | FPPC ID: 1481941
+                            </div>
+                        </div>
                     </div>
                 `,
                 admin: () => `
@@ -892,7 +906,7 @@
                                         </div>
                                     </div>
 
-                                    <button type="submit" id="canvass-btn" class="w-full bg-campaign-teal text-white rounded-2xl py-4 font-bold text-lg shadow-sm hover:bg-teal-600 transition flex items-center justify-center gap-2"><i class="ph-bold ph-check-circle"></i> Save & Next Door</button>
+                                    <button type="submit" id="canvass-btn" class="w-full bg-campaign-teal text-white rounded-2xl py-4 font-bold text-lg shadow-sm hover:bg-teal-600 transition flex items-center justify-center gap-2 mb-8"><i class="ph-bold ph-check-circle"></i> Save & Next Door</button>
                                 </form>
                             </div>
                         </div>
@@ -2078,6 +2092,29 @@
             confirmDeleteAccount: () => UI.confirm("Delete Account", "Permanently delete your account and all data? This cannot be reversed.", "Delete Forever", true, async () => { try { await deleteDoc(doc(db, "users", auth.currentUser.uid)); await auth.currentUser.delete(); UI.toast('Account deleted.'); } catch(e) { UI.toast('Requires recent login. Please sign out, sign in, and try again.', 'error'); } }),
             toggleMask: (id, text) => { const el = document.getElementById(id); el.innerText = el.innerText === '••••••••' ? text : '••••••••'; },
             copyText: (text) => navigator.clipboard.writeText(text).then(() => UI.toast('Copied!')).catch(() => UI.toast('Failed', 'error')),
+            
+            showAboutApp: () => {
+                UI.openModal(`
+                    <div class="bg-white p-6 rounded-2xl shadow-xl relative text-center">
+                        <button onclick="UI.closeModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center transition"><i class="ph-bold ph-x text-lg"></i></button>
+                        <div class="w-16 h-16 bg-gradient-to-br from-campaign-blue to-campaign-teal text-white rounded-2xl flex items-center justify-center text-4xl mx-auto mb-4 shadow-md">
+                            <i class="ph-fill ph-hands-clapping"></i>
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 mb-1">RyleeVolunteer</h2>
+                        <p class="text-campaign-teal font-bold text-sm mb-4">Version 2.4.0</p>
+                        <div class="bg-gray-50 border border-gray-100 rounded-xl p-4 text-sm text-gray-700 text-left space-y-2 mb-6 shadow-inner">
+                            <p><strong>Candidate:</strong> Rylee Peak</p>
+                            <p><strong>Office:</strong> Mayor of Moreno Valley 2026</p>
+                            <p><strong>Platform:</strong> Proprietary Campaign Hub</p>
+                            <p><strong>Database:</strong> Secure Server Node</p>
+                            <p><strong>Mission:</strong> To make Moreno Valley more transparent, responsive, innovative, and accessible.</p>
+                        </div>
+                        <div class="inline-block border border-gray-200 px-3 py-2 bg-white text-[9px] text-gray-500 font-bold uppercase tracking-wider text-center rounded shadow-sm">
+                            Paid for by Rylee Peak for Mayor 2026<br>FPPC ID: 1481941
+                        </div>
+                    </div>
+                `);
+            },
 
             adminTab: (tabId) => {
                 document.querySelectorAll('.admin-tab').forEach(el => { el.classList.remove('bg-blue-50', 'text-campaign-blue'); el.classList.add('text-gray-600'); });
