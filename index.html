@@ -742,7 +742,15 @@
                             <div class="absolute top-4 left-1/2 transform -translate-x-1/2 z-[400] bg-white/95 backdrop-blur px-5 py-2.5 rounded-full shadow-md text-xs font-bold text-gray-700 pointer-events-none text-center whitespace-nowrap border border-gray-100">
                                 <i class="ph-fill ph-hand-tap text-campaign-blue text-sm"></i> Tap a house on the map to select it
                             </div>
-                            <div class="absolute bottom-28 md:bottom-8 left-1/2 transform -translate-x-1/2 z-[400] w-full px-6 flex justify-center">
+                            
+                            <!-- Recenter GPS Button -->
+                            <div class="absolute bottom-44 md:bottom-28 right-4 z-[400]">
+                                <button onclick="app.recenterMap(this)" class="bg-white text-campaign-blue w-12 h-12 rounded-full shadow-lg border border-gray-200 flex items-center justify-center hover:bg-blue-50 transition shadow-xl">
+                                    <i class="ph-bold ph-crosshair text-2xl"></i>
+                                </button>
+                            </div>
+
+                            <div class="absolute bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 z-[400] w-full px-6 flex justify-center">
                                 <button onclick="app.startDoorLogFromMap()" class="w-full sm:w-auto bg-campaign-teal text-white px-8 py-4 rounded-full font-bold shadow-xl hover:bg-teal-600 transition flex items-center justify-center gap-2 text-lg border-2 border-white/20">
                                     <i class="ph-bold ph-door"></i> Log This Door
                                 </button>
@@ -1175,9 +1183,12 @@
             initCanvassMap: async () => {
                 if (appState.canvassMap) appState.canvassMap.invalidateSize();
                 else {
-                    appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 17); // Default zoom closer
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '&copy; OpenStreetMap contributors'
+                    appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 19); // Zoomed in much closer
+                    
+                    // Use a Hybrid Satellite layer so users can clearly see roofs AND street names
+                    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                        maxZoom: 21,
+                        attribution: '© Google'
                     }).addTo(appState.canvassMap);
 
                     // Add tap-to-pin functionality
@@ -1205,7 +1216,7 @@
                         
                         // Try to center map on user's current location automatically
                         navigator.geolocation.getCurrentPosition(pos => {
-                            appState.canvassMap.setView([pos.coords.latitude, pos.coords.longitude], 18);
+                            appState.canvassMap.setView([pos.coords.latitude, pos.coords.longitude], 19);
                             // Drop an initial pin where they are standing
                             if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
                             appState.selectedLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -1213,6 +1224,29 @@
                         }, () => {}, {timeout: 3000, enableHighAccuracy: true});
                     }
                 } catch(e) { console.error("Could not fetch map points from OptiPlex", e); }
+            },
+
+            recenterMap: (btn) => {
+                if (!navigator.geolocation) { UI.toast("GPS not supported on this device", "error"); return; }
+                
+                const originalIcon = btn.innerHTML;
+                btn.innerHTML = '<div class="spinner w-5 h-5 border-campaign-blue border-t-transparent mx-auto"></div>';
+                
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    
+                    // Move the map and the pin
+                    appState.canvassMap.setView([lat, lng], 20); // Zoom in really tight
+                    if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
+                    appState.selectedLocation = { lat, lng };
+                    appState.currentPin = L.marker([lat, lng]).addTo(appState.canvassMap);
+                    
+                    btn.innerHTML = originalIcon;
+                }, () => {
+                    UI.toast("Could not lock onto GPS location.", "error");
+                    btn.innerHTML = originalIcon;
+                }, {timeout: 5000, enableHighAccuracy: true});
             },
 
             startDoorLogFromMap: () => {
