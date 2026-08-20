@@ -1322,29 +1322,31 @@
                     }
                 } catch(e) {}
 
-                if (appState.canvassMap) appState.canvassMap.invalidateSize();
-                else {
-                    appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 19); 
-                    
-                    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-                        maxZoom: 21,
-                        attribution: '© Google'
-                    }).addTo(appState.canvassMap);
-
-                    appState.canvassMap.on('click', function(e) {
-                        if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
-                        
-                        const currentIcon = L.divIcon({
-                            className: 'bg-transparent',
-                            html: '<div class="w-5 h-5 rounded-full bg-campaign-blue border-4 border-white shadow-[0_0_10px_rgba(0,71,171,0.6)] flex items-center justify-center animate-pulse"></div>',
-                            iconSize: [20, 20],
-                            iconAnchor: [10, 10]
-                        });
-                        
-                        appState.currentPin = L.marker(e.latlng, { icon: currentIcon }).addTo(appState.canvassMap);
-                        appState.selectedLocation = e.latlng;
-                    });
+                if (appState.canvassMap) {
+                    appState.canvassMap.remove();
+                    appState.canvassMap = null;
                 }
+                
+                appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 19); 
+                
+                L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                    maxZoom: 21,
+                    attribution: '© Google'
+                }).addTo(appState.canvassMap);
+
+                appState.canvassMap.on('click', function(e) {
+                    if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
+                    
+                    const currentIcon = L.divIcon({
+                        className: 'bg-transparent',
+                        html: '<div class="w-5 h-5 rounded-full bg-campaign-blue border-4 border-white shadow-[0_0_10px_rgba(0,71,171,0.6)] flex items-center justify-center animate-pulse"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    
+                    appState.currentPin = L.marker(e.latlng, { icon: currentIcon }).addTo(appState.canvassMap);
+                    appState.selectedLocation = e.latlng;
+                });
 
                 try {
                     const [canvassRes, dnkRes] = await Promise.all([
