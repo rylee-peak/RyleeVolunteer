@@ -775,7 +775,7 @@
                                         <div class="mb-3">
                                             <label class="block text-xs font-bold text-gray-500 mb-1">Full Address (Auto-filled by GPS)</label>
                                             <textarea id="canvass-address" required rows="2" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1 transition" placeholder="Tap 'Get GPS' to locate..." ></textarea>
-                                            <p class="text-[10px] text-campaign-blue mt-1 font-medium"><i class="ph-fill ph-info"></i> Verify house number (Free GPS can occasionally be off by a door)</p>
+                                            <p class="text-[10px] text-campaign-blue mt-1 font-medium"><i class="ph-fill ph-info"></i> Please verify the house number before saving (GPS can sometimes drift)</p>
                                         </div>
                                         <div class="hidden">
                                             <input type="text" id="canvass-gps" readonly>
@@ -1274,11 +1274,13 @@
                         let houseNum = addr.house_number || '';
                         let street = addr.road || addr.pedestrian || '';
                         let city = addr.city || addr.town || addr.village || 'Moreno Valley';
+                        let state = addr.state || 'CA';
+                        let zip = addr.postcode || '';
                         
                         if (houseNum && street) {
-                            addressInput.value = `${houseNum} ${street}, ${city}`;
+                            addressInput.value = `${houseNum} ${street}, ${city}, ${state} ${zip}`.trim();
                         } else if (street) {
-                            addressInput.value = `${street}, ${city} (No house number found)`;
+                            addressInput.value = `${street}, ${city}, ${state} ${zip} (No house number found)`.trim();
                         } else {
                             addressInput.value = data.display_name;
                         }
@@ -1487,35 +1489,69 @@
                             <button onclick="app.adminDeleteCanvassField(${i})" class="text-red-400 p-1 hover:text-red-600"><i class="ph-bold ph-trash"></i></button>
                         </div>`).join('');
 
+                    // Fetch live canvass data from OptiPlex
+                    let logsHtml = '<div class="p-8 text-center"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent mx-auto"></div><p class="text-xs text-gray-500 mt-2">Connecting to OptiPlex...</p></div>';
+                    try {
+                        const res = await fetch('https://api.voterylee.com/api/canvass');
+                        if (res.ok) {
+                            const logs = await res.json();
+                            logs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            
+                            if (logs.length === 0) {
+                                logsHtml = '<p class="text-sm text-gray-500 p-4 text-center">No doors logged yet.</p>';
+                            } else {
+                                logsHtml = `<div class="overflow-x-auto"><table class="w-full text-left text-sm border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Date</th><th class="p-3">Volunteer</th><th class="p-3">Address</th><th class="p-3">GPS</th><th class="p-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-gray-100">` +
+                                logs.map(l => `<tr class="hover:bg-gray-50"><td class="p-3 whitespace-nowrap">${new Date(l.timestamp).toLocaleDateString()} ${new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td><td class="p-3 font-medium">${UI.escapeHtml(l.volunteer_name)}</td><td class="p-3">${UI.escapeHtml(l.address)}</td><td class="p-3 text-[10px] text-gray-400 font-mono">${UI.escapeHtml(l.gps)}</td><td class="p-3 text-right"><button onclick="app.adminDeleteCanvassLog('${l.id}')" class="text-red-400 hover:text-red-600 p-1 transition bg-red-50 rounded" title="Delete Log"><i class="ph-bold ph-trash"></i></button></td></tr>`).join('') +
+                                `</tbody></table></div>`;
+                            }
+                        } else {
+                            logsHtml = '<p class="text-red-500 text-sm p-4">Error: Could not retrieve data from OptiPlex.</p>';
+                        }
+                    } catch(e) {
+                        logsHtml = '<p class="text-red-500 text-sm p-4">Error: Could not connect to OptiPlex API.</p>';
+                    }
+
                     container.innerHTML = `
-                        <div class="flex flex-col md:flex-row">
-                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 bg-gray-50">
-                                <h3 class="font-bold text-lg mb-4">Add Questionnaire Field</h3>
-                                <form onsubmit="event.preventDefault(); app.adminAddCanvassField()" class="space-y-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                                    <div><label class="text-xs font-bold text-gray-500">Field Label (Question)</label><input type="text" id="admin-cf-label" required class="w-full border rounded p-2 text-sm"></div>
-                                    <div>
-                                        <label class="text-xs font-bold text-gray-500">Input Type</label>
-                                        <select id="admin-cf-type" onchange="document.getElementById('admin-cf-options-div').style.display = this.value === 'select' ? 'block' : 'none'" required class="w-full border rounded p-2 text-sm bg-white">
-                                            <option value="text">Short Text</option>
-                                            <option value="textarea">Long Text (Paragraph)</option>
-                                            <option value="select">Dropdown Menu</option>
-                                            <option value="checkbox">Yes/No Checkbox</option>
-                                            <option value="stars">Star Rating (1-5)</option>
-                                            <option value="email">Email Address</option>
-                                        </select>
-                                    </div>
-                                    <div id="admin-cf-options-div" style="display:none;">
-                                        <label class="text-xs font-bold text-gray-500">Dropdown Options (Comma separated)</label>
-                                        <input type="text" id="admin-cf-options" placeholder="Option 1, Option 2, Option 3" class="w-full border rounded p-2 text-sm">
-                                    </div>
-                                    <div><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="admin-cf-req" class="rounded"> Required Field</label></div>
-                                    <button type="submit" id="admin-cf-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Add Field to Form</button>
-                                </form>
+                        <div class="flex flex-col space-y-6 p-4">
+                            <!-- Top Section: Data Viewer -->
+                            <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                                <div class="bg-blue-50 border-b border-gray-200 p-4 flex justify-between items-center">
+                                    <h3 class="font-bold text-lg text-campaign-blue flex items-center gap-2"><i class="ph-fill ph-database"></i> Door Knock Logs</h3>
+                                    <button onclick="app.exportCanvassData()" class="text-xs bg-campaign-blue text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-blue-800 transition flex items-center gap-2"><i class="ph-bold ph-download-simple"></i> Export CSV</button>
+                                </div>
+                                ${logsHtml}
                             </div>
-                            <div class="w-full md:w-2/3 p-4">
-                                <h3 class="font-bold text-lg mb-4">Current Mobile Questionnaire</h3>
-                                <div class="bg-white border rounded-lg overflow-hidden shadow-sm">${fieldsHtml}</div>
-                                <p class="text-xs text-gray-400 mt-4"><i class="ph-fill ph-info"></i> Changes made here instantly update the mobile app for all volunteers.</p>
+
+                            <!-- Bottom Section: Form Builder -->
+                            <div class="flex flex-col md:flex-row border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 bg-gray-50">
+                                    <h3 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="ph-fill ph-pencil-simple"></i> Edit Questionnaire</h3>
+                                    <form onsubmit="event.preventDefault(); app.adminAddCanvassField()" class="space-y-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                        <div><label class="text-xs font-bold text-gray-500">Field Label (Question)</label><input type="text" id="admin-cf-label" required class="w-full border rounded p-2 text-sm"></div>
+                                        <div>
+                                            <label class="text-xs font-bold text-gray-500">Input Type</label>
+                                            <select id="admin-cf-type" onchange="document.getElementById('admin-cf-options-div').style.display = this.value === 'select' ? 'block' : 'none'" required class="w-full border rounded p-2 text-sm bg-white">
+                                                <option value="text">Short Text</option>
+                                                <option value="textarea">Long Text (Paragraph)</option>
+                                                <option value="select">Dropdown Menu</option>
+                                                <option value="checkbox">Yes/No Switch</option>
+                                                <option value="stars">Star Rating (1-5)</option>
+                                                <option value="email">Email Address</option>
+                                            </select>
+                                        </div>
+                                        <div id="admin-cf-options-div" style="display:none;">
+                                            <label class="text-xs font-bold text-gray-500">Dropdown Options (Comma separated)</label>
+                                            <input type="text" id="admin-cf-options" placeholder="Option 1, Option 2, Option 3" class="w-full border rounded p-2 text-sm">
+                                        </div>
+                                        <div><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="admin-cf-req" class="rounded"> Required Field</label></div>
+                                        <button type="submit" id="admin-cf-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Add Field to Form</button>
+                                    </form>
+                                </div>
+                                <div class="w-full md:w-2/3 p-4 bg-white">
+                                    <h3 class="font-bold text-lg mb-4">Current Mobile Questionnaire</h3>
+                                    <div class="bg-white border rounded-lg overflow-hidden shadow-sm">${fieldsHtml}</div>
+                                    <p class="text-xs text-gray-400 mt-4"><i class="ph-fill ph-info"></i> Changes made here instantly update the mobile app for all volunteers.</p>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -1523,7 +1559,7 @@
                     appState.adminCanvassFields = fields;
                 } catch(e) { 
                     console.error("Builder Error:", e);
-                    container.innerHTML = `<div class="p-6 text-center text-red-500 bg-red-50 rounded-xl m-4 border border-red-100"><i class="ph-bold ph-warning-circle text-3xl mb-2"></i><p class="font-bold">Error loading builder</p><p class="text-sm mt-1">${UI.escapeHtml(e.message)}</p><p class="text-xs text-red-400 mt-3">This is usually caused by missing Firestore Security Rules for 'campaignSettings'.</p></div>`; 
+                    container.innerHTML = `<div class="p-6 text-center text-red-500 bg-red-50 rounded-xl m-4 border border-red-100"><i class="ph-bold ph-warning-circle text-3xl mb-2"></i><p class="font-bold">Error loading builder</p><p class="text-sm mt-1">${UI.escapeHtml(e.message)}</p></div>`; 
                 }
             },
 
@@ -1558,6 +1594,44 @@
                         app.adminTab('canvass');
                     } catch(e) { UI.toast("Error deleting.", "error"); }
                 });
+            },
+
+            adminDeleteCanvassLog: (id) => {
+                UI.confirm("Delete Door Log", "Permanently delete this canvassing record? This cannot be undone.", "Delete", true, async () => {
+                    try {
+                        const res = await fetch(`https://api.voterylee.com/api/canvass/${id}`, { method: 'DELETE' });
+                        if(res.ok) {
+                            UI.toast("Log deleted from OptiPlex!");
+                            app.adminTab('canvass');
+                        } else {
+                            UI.toast("Failed to delete log.", "error");
+                        }
+                    } catch(e) { UI.toast("Error connecting to OptiPlex.", "error"); }
+                });
+            },
+
+            exportCanvassData: async () => {
+                try {
+                    UI.toast("Preparing CSV export...");
+                    const res = await fetch('https://api.voterylee.com/api/canvass');
+                    const logs = await res.json();
+                    if (!logs.length) return UI.toast('No data to export.', 'info');
+
+                    let csv = 'Log ID,Timestamp,Volunteer Name,Address,GPS Coordinates,Responses (JSON)\n';
+                    logs.forEach(l => {
+                        const respStr = JSON.stringify(l.responses || {}).replace(/"/g, '""');
+                        csv += `"${l.id}","${l.timestamp}","${l.volunteer_name}","${l.address}","${l.gps}","${respStr}"\n`;
+                    });
+                    
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Canvass_Export_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } catch(e) { UI.toast('Error generating export.', 'error'); }
             },
 
             // --- END CANVASSING LOGIC ---
