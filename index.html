@@ -256,7 +256,8 @@
             user: null, profile: null, isAdmin: false, currentView: 'dashboard', 
             users: [], unsubscribes: [], loadTime: Date.now(), 
             sessionId: Math.random().toString(36).substring(2), timeEntry: null, clockInterval: null,
-            canvassMap: null, canvassFormSchema: [], canvassSchemaMap: {}, editingOppId: null, allOpps: []
+            canvassMap: null, canvassFormSchema: [], canvassSchemaMap: {}, editingOppId: null, allOpps: [],
+            locationWatchId: null, adminMapInterval: null
         };
 
         const UI = {
@@ -817,6 +818,7 @@
                         <div class="flex overflow-x-auto gap-2 mb-6 border-b border-gray-200 pb-2 custom-scrollbar">
                             <button onclick="app.adminTab('overview')" id="tab-overview" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm bg-blue-50 text-campaign-blue">Overview</button>
                             <button onclick="app.adminTab('volunteers')" id="tab-volunteers" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Volunteers</button>
+                            <button onclick="app.adminTab('live-map')" id="tab-live-map" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Live Tracking</button>
                             <button onclick="app.adminTab('canvass')" id="tab-canvass" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Canvassing & DNK</button>
                             <button onclick="app.adminTab('tools')" id="tab-tools" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Credentials</button>
                             <button onclick="app.adminTab('announcements')" id="tab-announcements" class="admin-tab whitespace-nowrap px-4 py-2 rounded-lg font-medium text-sm text-gray-600 hover:bg-gray-100">Comms & Updates</button>
@@ -1943,6 +1945,27 @@
                     const startTime = Date.now();
                     const docRef = await addDoc(collection(db, "time_logs"), { userId: auth.currentUser.uid, startTime: startTime, status: 'active' });
                     appState.timeEntry = { id: docRef.id, startTime: startTime }; app.renderTimeClock(); UI.toast("Clocked in! Have a great shift.");
+                    
+                    if ("geolocation" in navigator) {
+                        appState.locationWatchId = navigator.geolocation.watchPosition(
+                            async (pos) => {
+                                try {
+                                    await fetch('https://api.voterylee.com/api/location', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            userId: auth.currentUser.uid,
+                                            volunteerName: `${appState.profile.firstName} ${appState.profile.lastName}`,
+                                            lat: pos.coords.latitude,
+                                            lng: pos.coords.longitude
+                                        })
+                                    });
+                                } catch(e) {}
+                            },
+                            (err) => { console.warn("Live tracking error", err); },
+                            { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+                        );
+                    }
                 } catch(e) { UI.toast("Error clocking in.", "error"); app.renderTimeClock(); }
             },
 
@@ -1955,6 +1978,12 @@
                     await updateDoc(doc(db, "users", auth.currentUser.uid), { totalHours: newTotal });
                     appState.profile.totalHours = newTotal; appState.timeEntry = null; app.renderTimeClock();
                     UI.toast(`Clocked out! Logged ${hours.toFixed(2)} hours. Thank you!`);
+                    
+                    if (appState.locationWatchId) {
+                        navigator.geolocation.clearWatch(appState.locationWatchId);
+                        appState.locationWatchId = null;
+                        try { await fetch(`https://api.voterylee.com/api/location/${auth.currentUser.uid}`, { method: 'DELETE' }); } catch(e) {}
+                    }
                 } catch(e) { UI.toast("Error clocking out.", "error"); app.renderTimeClock(); }
             },
 
@@ -2101,9 +2130,9 @@
                             <i class="ph-fill ph-hands-clapping"></i>
                         </div>
                         <h2 class="text-2xl font-black text-gray-900 mb-1">RyleeVolunteer</h2>
-                        <p class="text-campaign-teal font-bold text-sm mb-4">Version 2.4.0</p>
+                        <p class="text-campaign-teal font-bold text-sm mb-4">Version 2.5.0</p>
                         <div class="bg-gray-50 border border-gray-100 rounded-xl p-4 text-sm text-gray-700 text-left space-y-3 mb-6 shadow-inner">
-                            <p><strong>About This App:</strong> RyleeVolunteer is the custom-built central hub for our campaign team, designed to make organizing fast and effective.</p>
+                            <p><strong>App Features:</strong> RyleeVolunteer is custom-built to empower our ground game and keep everyone connected.</p>
                             <ul class="list-disc pl-4 space-y-1.5 text-xs text-gray-600">
                                 <li><strong>Mobile Canvassing:</strong> Live map targeting and real-time door logging.</li>
                                 <li><strong>Scout AI:</strong> Intelligent campaign trail companion for quick answers.</li>
@@ -2111,24 +2140,92 @@
                                 <li><strong>Shift Hub:</strong> Find events, track hours, and receive instant push alerts.</li>
                             </ul>
                         </div>
-                        <div class="inline-block border border-gray-200 px-3 py-2 bg-white text-[9px] text-gray-500 font-bold uppercase tracking-wider text-center rounded shadow-sm">
-                            Paid for by Rylee Peak for Mayor 2026<br>FPPC ID: 1481941
-                        </div>
                     </div>
                 `);
             },
 
             adminTab: (tabId) => {
+                if (appState.adminMapInterval) { clearInterval(appState.adminMapInterval); appState.adminMapInterval = null; }
                 document.querySelectorAll('.admin-tab').forEach(el => { el.classList.remove('bg-blue-50', 'text-campaign-blue'); el.classList.add('text-gray-600'); });
                 const active = document.getElementById(`tab-${tabId}`); if(active) { active.classList.add('bg-blue-50', 'text-campaign-blue'); active.classList.remove('text-gray-600'); }
                 const content = document.getElementById('admin-content'); UI.showLoading('admin-content');
                 setTimeout(() => {
                     if(tabId === 'overview') app.renderAdminOverview(content);
                     if(tabId === 'volunteers') app.renderAdminVolunteers(content);
+                    if(tabId === 'live-map') app.renderAdminLiveMap(content);
                     if(tabId === 'canvass') app.renderAdminCanvassFormBuilder(content);
                     if(tabId === 'tools') app.renderAdminTools(content);
                     if(tabId === 'announcements') app.renderAdminAnnouncements(content);
                     if(tabId === 'opportunities') app.renderAdminOpportunities(content);
+                }, 100);
+            },
+
+            renderAdminLiveMap: async (container) => {
+                container.innerHTML = `
+                    <div class="h-[600px] flex flex-col">
+                        <div class="bg-blue-50 border-b border-gray-200 p-4 flex justify-between items-center shrink-0">
+                            <h3 class="font-bold text-lg text-campaign-blue flex items-center gap-2"><i class="ph-fill ph-crosshair"></i> Active Volunteers (On The Clock)</h3>
+                            <span class="text-xs bg-white text-campaign-blue px-3 py-1 rounded-full font-bold shadow-sm flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div> Live Updates</span>
+                        </div>
+                        <div id="admin-live-map-container" class="flex-1 w-full bg-gray-100 relative z-10"></div>
+                    </div>
+                `;
+
+                setTimeout(async () => {
+                    const mapEl = document.getElementById('admin-live-map-container');
+                    if (!mapEl) return;
+                    
+                    const adminMap = L.map('admin-live-map-container').setView([33.9425, -117.2297], 13);
+                    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 21, attribution: '© Google' }).addTo(adminMap);
+
+                    let markers = {};
+
+                    const fetchLocations = async () => {
+                        try {
+                            const res = await fetch('https://api.voterylee.com/api/location');
+                            if (!res.ok) return;
+                            const locations = await res.json();
+                            
+                            // Remove markers for users who clocked out
+                            const activeUserIds = locations.map(l => l.user_id);
+                            for (let uid in markers) {
+                                if (!activeUserIds.includes(uid)) {
+                                    adminMap.removeLayer(markers[uid]);
+                                    delete markers[uid];
+                                }
+                            }
+
+                            const volIcon = L.divIcon({
+                                className: 'bg-transparent',
+                                html: '<div class="w-8 h-8 rounded-full bg-campaign-teal text-white border-2 border-white shadow-lg flex items-center justify-center text-lg animate-bounce"><i class="ph-fill ph-user"></i></div>',
+                                iconSize: [32, 32],
+                                iconAnchor: [16, 32]
+                            });
+
+                            let bounds = L.latLngBounds();
+
+                            locations.forEach(loc => {
+                                const latLng = [loc.lat, loc.lng];
+                                bounds.extend(latLng);
+
+                                if (markers[loc.user_id]) {
+                                    markers[loc.user_id].setLatLng(latLng);
+                                } else {
+                                    const marker = L.marker(latLng, { icon: volIcon }).addTo(adminMap);
+                                    marker.bindTooltip(`<b>${UI.escapeHtml(loc.volunteer_name)}</b><br><span class="text-[10px] text-gray-500">Active Now</span>`, { permanent: true, direction: 'top', offset: [0, -32] });
+                                    markers[loc.user_id] = marker;
+                                }
+                            });
+
+                            if (locations.length > 0 && Object.keys(markers).length === locations.length) {
+                                adminMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+                            }
+
+                        } catch(e) { console.warn("Live map fetch error", e); }
+                    };
+
+                    await fetchLocations();
+                    appState.adminMapInterval = setInterval(fetchLocations, 10000); // Refreshes every 10 seconds
                 }, 100);
             },
 
