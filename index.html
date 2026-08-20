@@ -1304,6 +1304,13 @@
                 } else {
                     surveySec.classList.remove('opacity-40', 'pointer-events-none');
                 }
+                
+                if (appState.canvassFormSchema) {
+                    appState.canvassFormSchema.forEach(field => {
+                        const el = document.getElementById(`dyn_${field.id}`);
+                        if (el) el.disabled = isDnk;
+                    });
+                }
             },
 
             initCanvassMap: async () => {
