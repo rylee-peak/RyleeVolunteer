@@ -1679,7 +1679,11 @@
                                 <form onsubmit="event.preventDefault(); app.adminCreateAnnouncement()" class="space-y-3 mb-8 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                                     <div><label class="text-xs font-bold text-gray-500">Title</label><input type="text" id="admin-ann-title" required class="w-full border rounded p-2 text-sm"></div>
                                     <div><label class="text-xs font-bold text-gray-500">Body</label><textarea id="admin-ann-body" required rows="4" class="w-full border rounded p-2 text-sm"></textarea></div>
-                                    <div><label class="text-xs font-bold text-gray-500">Image URL (Optional)</label><input type="url" id="admin-ann-img" class="w-full border rounded p-2 text-sm"></div>
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500 block mb-1">Attach Photo (Optional)</label>
+                                        <input type="file" id="admin-ann-img" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-campaign-blue hover:file:bg-blue-100 cursor-pointer">
+                                        <p class="text-[10px] text-gray-400 mt-1">Photos are securely hosted on your private server.</p>
+                                    </div>
                                     <div class="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 mt-2"><label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" id="admin-ann-pinned" class="rounded border-gray-300 text-campaign-blue focus:ring-campaign-blue w-4 h-4"> Pin to top</label></div>
                                     <button type="submit" id="admin-ann-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Post Announcement</button>
                                 </form>
@@ -1701,7 +1705,53 @@
                 } catch(e) { container.innerHTML = '<p class="text-red-500 p-4">Error loading module.</p>'; }
             },
 
-            adminCreateAnnouncement: async () => { const btn = document.getElementById('admin-ann-btn'); btn.disabled = true; btn.innerText = 'Posting...'; try { await addDoc(collection(db, "announcements"), { title: document.getElementById('admin-ann-title').value.trim(), body: document.getElementById('admin-ann-body').value.trim(), imageUrl: document.getElementById('admin-ann-img').value.trim() || null, pinned: document.getElementById('admin-ann-pinned').checked, author: appState.profile.firstName + ' ' + appState.profile.lastName, createdAt: serverTimestamp() }); UI.toast("Posted!"); app.adminTab('announcements'); } catch(e) { UI.toast("Error posting.", "error"); btn.disabled=false; btn.innerText='Post Announcement'; } },
+            adminCreateAnnouncement: async () => { 
+                const btn = document.getElementById('admin-ann-btn'); 
+                btn.disabled = true; 
+                btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>'; 
+                
+                try { 
+                    let imageUrl = null;
+                    const fileInput = document.getElementById('admin-ann-img');
+                    
+                    // If a photo was selected, upload it to the OptiPlex first
+                    if (fileInput.files.length > 0) {
+                        const formData = new FormData();
+                        formData.append('image', fileInput.files[0]);
+                        
+                        // Send direct to OptiPlex API
+                        const uploadRes = await fetch('https://api.voterylee.com/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        if (uploadRes.ok) {
+                            const data = await uploadRes.json();
+                            imageUrl = data.url; // Get the generated OptiPlex link
+                        } else {
+                            throw new Error("Failed to upload image to private server.");
+                        }
+                    }
+
+                    // Save the announcement to Firebase, storing the OptiPlex URL if an image was uploaded
+                    await addDoc(collection(db, "announcements"), { 
+                        title: document.getElementById('admin-ann-title').value.trim(), 
+                        body: document.getElementById('admin-ann-body').value.trim(), 
+                        imageUrl: imageUrl, 
+                        pinned: document.getElementById('admin-ann-pinned').checked, 
+                        author: appState.profile.firstName + ' ' + appState.profile.lastName, 
+                        createdAt: serverTimestamp() 
+                    }); 
+                    
+                    UI.toast("Posted!"); 
+                    app.adminTab('announcements'); 
+                } catch(e) { 
+                    UI.toast("Error posting: " + e.message, "error"); 
+                    btn.disabled=false; 
+                    btn.innerText='Post Announcement'; 
+                } 
+            },
+            
             adminSendPushAlert: async () => { const btn = document.getElementById('admin-push-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>'; try { await addDoc(collection(db, "pushAlerts"), { message: document.getElementById('admin-push-msg').value.trim(), author: appState.profile.firstName + ' ' + appState.profile.lastName, createdAt: serverTimestamp() }); UI.toast("Push alert sent to all volunteers!"); document.getElementById('admin-push-msg').value = ''; btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } catch(e) { UI.toast("Error sending alert.", "error"); btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } },
             adminSendMassEmail: async () => {
                 const btn = document.getElementById('admin-email-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>';
