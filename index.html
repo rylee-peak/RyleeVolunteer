@@ -75,7 +75,7 @@
         .markdown-content a { color: #0047AB; text-decoration: underline; }
         
         /* Map Styles */
-        #canvass-map { height: 100%; width: 100%; border-radius: 1rem; z-index: 10; }
+        #canvass-map { height: 100%; width: 100%; z-index: 10; }
     </style>
 </head>
 <body class="text-gray-800 antialiased overflow-hidden">
@@ -170,7 +170,7 @@
             <div class="p-4 border-t border-gray-100">
                 <div class="flex items-center gap-2 mb-4">
                     <div onclick="app.navigate('profile')" class="flex-1 flex items-center gap-3 px-2 py-2 -mx-2 rounded-xl cursor-pointer hover:bg-gray-50 transition group" title="View Profile">
-                        <div class="w-10 h-10 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-lg group-hover:bg-campaign-blue group-hover:text-white transition" id="user-avatar-desktop">?</div>
+                        <div class="w-10 h-10 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-lg group-hover:bg-campaign-blue group-hover:text-white transition overflow-hidden" id="user-avatar-desktop">?</div>
                         <div class="flex-1 min-w-0"><p class="text-sm font-bold text-gray-900 truncate" id="user-name-desktop">Volunteer</p><p class="text-[10px] text-gray-500 truncate capitalize" id="user-role-desktop">Member</p></div>
                     </div>
                     <button onclick="app.navigate('notifications')" class="relative p-2 text-gray-400 hover:text-campaign-blue hover:bg-blue-50 rounded-xl transition shrink-0" title="Inbox">
@@ -190,7 +190,7 @@
                         <i class="ph-fill ph-bell text-2xl"></i>
                         <span id="badge-m-notifications" class="hidden absolute top-0 right-0.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
                     </button>
-                    <button onclick="app.navigate('profile')" class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-sm shadow-sm" id="user-avatar-mobile">?</button>
+                    <button onclick="app.navigate('profile')" class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden" id="user-avatar-mobile">?</button>
                 </div>
             </header>
 
@@ -324,7 +324,12 @@
                     }).catch(e => { if(e.message && !e.message.includes("'<Location>'") && !e.toString().includes("<")) console.error('SW Error:', e); });
                 }
 
-                app.performAuthCheck();
+                // Force app execution even if DOM was fast to skip frozen loading screens
+                if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                    app.performAuthCheck();
+                } else {
+                    document.addEventListener('DOMContentLoaded', app.performAuthCheck);
+                }
             },
 
             performAuthCheck: () => {
@@ -341,11 +346,9 @@
                                 document.getElementById('landing-page').classList.add('hidden'); document.getElementById('auth-page').classList.add('hidden');
                                 document.getElementById('main-app').classList.remove('hidden');
                                 
-                                const init = appState.profile.firstName ? appState.profile.firstName.charAt(0).toUpperCase() : '?';
-                                const avatarD = document.getElementById('user-avatar-desktop'); const avatarM = document.getElementById('user-avatar-mobile');
-                                const nameD = document.getElementById('user-name-desktop'); const roleD = document.getElementById('user-role-desktop');
+                                app.updateAvatarDisplays();
                                 
-                                if(avatarD) avatarD.innerText = init; if(avatarM) avatarM.innerText = init;
+                                const nameD = document.getElementById('user-name-desktop'); const roleD = document.getElementById('user-role-desktop');
                                 if(nameD) nameD.innerText = `${appState.profile.firstName} ${appState.profile.lastName}`;
                                 if(roleD) roleD.innerText = appState.profile.role;
                                 
@@ -417,6 +420,45 @@
             },
 
             logout: () => signOut(auth),
+
+            updateAvatarDisplays: () => {
+                const init = appState.profile?.firstName ? appState.profile.firstName.charAt(0).toUpperCase() : '?';
+                const url = appState.profile?.photoUrl;
+                
+                const dNav = document.getElementById('user-avatar-desktop');
+                if (dNav) dNav.innerHTML = url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init;
+                
+                const mNav = document.getElementById('user-avatar-mobile');
+                if (mNav) mNav.innerHTML = url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init;
+
+                const pView = document.getElementById('prof-pic-container');
+                if (pView) pView.innerHTML = url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init;
+            },
+            
+            uploadProfilePic: async (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                
+                const container = document.getElementById('prof-pic-container');
+                if(container) container.innerHTML = '<div class="spinner w-6 h-6 border-campaign-blue border-t-transparent"></div>';
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    const res = await fetch('https://api.voterylee.com/api/upload', { method: 'POST', body: formData });
+                    if(!res.ok) throw new Error("Upload failed");
+                    
+                    const data = await res.json();
+                    await updateDoc(doc(db, "users", auth.currentUser.uid), { photoUrl: data.url });
+                    appState.profile.photoUrl = data.url;
+                    
+                    app.updateAvatarDisplays();
+                    UI.toast("Profile picture updated!");
+                } catch(err) {
+                    UI.toast("Error uploading photo", "error");
+                    app.updateAvatarDisplays();
+                }
+            },
 
             updateUnreadBadge: async () => {
                 try {
@@ -559,7 +601,7 @@
 
                 const container = document.getElementById('view-container');
                 
-                // Smart Scroll Lock for Scout AI
+                // Smart Scroll Lock for specific views
                 if (viewId === 'chat') {
                     container.classList.remove('overflow-y-auto', 'pb-32', 'pb-8');
                     container.classList.add('overflow-hidden', 'pb-20', 'flex', 'flex-col');
@@ -691,7 +733,22 @@
                 notifications: () => `<div class="max-w-3xl mx-auto fade-in"><header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">Inbox</h2><p class="text-gray-500">Catch up on recent campaign activity.</p></header><div id="notifications-list" class="space-y-3"></div></div>`,
                 profile: () => `
                     <div class="max-w-2xl mx-auto fade-in">
-                        <header class="mb-6"><h2 class="text-3xl font-bold text-gray-900 mb-1">My Profile</h2></header>
+                        <header class="mb-6 text-center"><h2 class="text-3xl font-bold text-gray-900 mb-1">My Profile</h2></header>
+                        
+                        <!-- Uploadable Profile Picture -->
+                        <div class="flex flex-col items-center mb-6">
+                            <div class="relative group cursor-pointer" onclick="document.getElementById('prof-pic-upload').click()">
+                                <div id="prof-pic-container" class="w-24 h-24 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center text-4xl shadow-md border-4 border-white overflow-hidden">
+                                    <!-- Avatar injected here by updateAvatarDisplays() -->
+                                </div>
+                                <div class="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-200">
+                                    <i class="ph-bold ph-camera text-white text-2xl"></i>
+                                </div>
+                                <input type="file" id="prof-pic-upload" class="hidden" accept="image/*" onchange="app.uploadProfilePic(event)">
+                            </div>
+                            <p class="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-wider">Tap to change</p>
+                        </div>
+
                         <div class="grid grid-cols-2 gap-4 mb-6">
                             <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
                                 <span class="text-3xl font-black text-campaign-teal leading-none mb-1">${(appState.profile?.totalHours || 0).toFixed(1)}</span>
@@ -763,7 +820,7 @@
 
                         <!-- Form View -->
                         <div id="canvass-view-form" class="hidden flex-1 w-full overflow-y-auto p-4 md:p-8 pb-32 bg-gray-50">
-                            <div class="max-w-2xl mx-auto">
+                            <div class="max-w-2xl mx-auto mb-12 md:mb-0">
                                 <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 shadow-sm">
                                     <h3 class="text-xs uppercase font-bold text-campaign-blue tracking-wider mb-2 flex items-center gap-1"><i class="ph-fill ph-chat-circle-text"></i> Your Script</h3>
                                     <p class="text-sm text-gray-800 leading-relaxed bg-white p-4 rounded-xl border border-blue-100 shadow-sm">"Hi! My name is <b>${UI.escapeHtml(appState.profile?.firstName)}</b>, and I'm a volunteer with Rylee Peak's campaign for Mayor of Moreno Valley. We're talking to neighbors today about local issues like government transparency and youth engagement. How are you feeling about the upcoming 2026 election?"</p>
@@ -777,7 +834,7 @@
                                         </div>
                                         
                                         <div class="mb-3">
-                                            <label class="block text-xs font-bold text-gray-500 mb-1">Full Address (Auto-filled by GPS)</label>
+                                            <label class="block text-xs font-bold text-gray-500 mb-1">Full Address</label>
                                             <textarea id="canvass-address" required rows="2" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-campaign-blue focus:ring-1 transition" placeholder="Tap 'Get GPS' to locate..." ></textarea>
                                             <p class="text-[10px] text-campaign-blue mt-1 font-medium"><i class="ph-fill ph-info"></i> Please verify the house number before saving (GPS can sometimes drift)</p>
                                         </div>
@@ -802,6 +859,10 @@
             },
 
             controllers: {
+                profile: () => {
+                    app.updateAvatarDisplays();
+                },
+                
                 dashboard: async () => {
                     const alertsDiv = document.getElementById('dash-alerts'); const statsDiv = document.getElementById('dash-stats');
                     const shiftsDiv = document.getElementById('dash-my-shifts'); const annDiv = document.getElementById('dash-latest-announcement');
@@ -851,11 +912,14 @@
                             } else {
                                 dashPreview.innerHTML = users.slice(0, 3).map((u, index) => {
                                     const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                                    const url = u.photoUrl;
                                     const medalColors = ['text-yellow-500 bg-yellow-100', 'text-gray-400 bg-gray-100', 'text-amber-600 bg-amber-100'];
                                     return `
                                         <div class="flex items-center gap-3">
                                             <div class="w-6 h-6 rounded-full ${medalColors[index]} flex items-center justify-center text-[10px] font-bold shrink-0">${index + 1}</div>
-                                            <div class="w-8 h-8 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center font-bold text-xs shrink-0">${init}</div>
+                                            <div class="w-8 h-8 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                                                ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                                            </div>
                                             <div class="flex-1 min-w-0">
                                                 <p class="text-sm font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName?.charAt(0))}.</p>
                                             </div>
@@ -900,6 +964,7 @@
 
                             podiumDiv.innerHTML = displayOrder.map(u => {
                                 const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                                const url = u.photoUrl;
                                 const isFirst = u.rank === 1;
                                 const isSecond = u.rank === 2;
                                 const bgStyle = isFirst ? 'bg-gradient-to-t from-yellow-100 to-yellow-50 border-yellow-200 h-32 sm:h-48 md:h-56 shadow-lg transform -translate-y-2 md:-translate-y-4 z-10' : 
@@ -910,7 +975,9 @@
                                 return `
                                     <div class="flex-1 flex flex-col items-center justify-end w-full max-w-[100px] sm:max-w-[140px] md:max-w-[200px]">
                                         <div class="relative mb-2 md:mb-3">
-                                            <div class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-xl sm:text-2xl md:text-3xl shadow-md border-2 md:border-4 border-white ${isFirst ? 'ring-2 md:ring-4 ring-yellow-400/30' : ''}">${init}</div>
+                                            <div class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-xl sm:text-2xl md:text-3xl shadow-md border-2 md:border-4 border-white overflow-hidden ${isFirst ? 'ring-2 md:ring-4 ring-yellow-400/30' : ''}">
+                                                ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                                            </div>
                                             <div class="absolute -bottom-1 -right-1 md:-bottom-2 md:-right-2 w-5 h-5 sm:w-8 sm:h-8 rounded-full ${medalBg} ${medalColor} border border-white md:border-2 flex items-center justify-center font-bold text-[10px] md:text-sm shadow-sm"><i class="ph-fill ph-medal"></i></div>
                                         </div>
                                         <div class="w-full rounded-t-2xl md:rounded-t-3xl border-t-2 border-x-2 flex flex-col items-center pt-3 sm:pt-6 px-1 md:px-2 text-center transition-all duration-500 ${bgStyle}">
@@ -928,12 +995,15 @@
                         listDiv.innerHTML = rest.length > 0 ? rest.map((u, index) => {
                             const rank = index + 4;
                             const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                            const url = u.photoUrl;
                             const isMe = u.id === auth.currentUser.uid;
                             
                             return `
                                 <div class="flex items-center gap-4 p-4 hover:bg-gray-50 transition ${isMe ? 'bg-blue-50/30' : ''}">
                                     <div class="w-8 text-center text-gray-400 font-bold font-mono text-sm">#${rank}</div>
-                                    <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center font-bold text-sm shrink-0 border border-gray-200">${init}</div>
+                                    <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center font-bold text-sm shrink-0 border border-gray-200 overflow-hidden">
+                                        ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                                    </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2">
                                             <h4 class="font-bold text-gray-900 text-base truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h4>
@@ -1057,13 +1127,16 @@
                         }));
 
                         document.getElementById('opps-list').innerHTML = results.map(r => `
-                            <div class="bg-white p-5 rounded-2xl shadow-sm border flex flex-col justify-between">
-                                <div>
-                                    <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-gray-900">${UI.escapeHtml(r.data.title)}</h3>${r.signedUp ? '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">Attending</span>' : ''}</div>
-                                    <p class="text-sm text-gray-600 mb-3 line-clamp-2">${UI.escapeHtml(r.data.description)}</p>
-                                    <div class="space-y-1 text-xs text-gray-500 mb-4"><p><i class="ph ph-calendar-blank text-campaign-blue"></i> ${UI.escapeHtml(r.data.date)} • ${UI.escapeHtml(r.data.time)}</p><p><i class="ph ph-map-pin text-campaign-blue"></i> ${UI.escapeHtml(r.data.location)}</p></div>
+                            <div class="bg-white rounded-2xl shadow-sm border flex flex-col justify-between overflow-hidden">
+                                ${r.data.imageUrl ? `<img src="${UI.escapeHtml(r.data.imageUrl)}" onerror="this.style.display='none'" class="w-full h-40 object-cover bg-gray-100 border-b border-gray-100">` : ''}
+                                <div class="p-5 flex-1 flex flex-col justify-between">
+                                    <div>
+                                        <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-gray-900">${UI.escapeHtml(r.data.title)}</h3>${r.signedUp ? '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded shrink-0 ml-2">Attending</span>' : ''}</div>
+                                        <p class="text-sm text-gray-600 mb-3 line-clamp-2">${UI.escapeHtml(r.data.description)}</p>
+                                        <div class="space-y-1 text-xs text-gray-500 mb-4"><p><i class="ph ph-calendar-blank text-campaign-blue"></i> ${UI.escapeHtml(r.data.date)} • ${UI.escapeHtml(r.data.time)}</p><p><i class="ph ph-map-pin text-campaign-blue"></i> ${UI.escapeHtml(r.data.location)}</p></div>
+                                    </div>
+                                    <button onclick="app.toggleSignup('${r.id}', ${r.signedUp})" class="w-full py-2.5 rounded-lg text-sm font-bold transition border ${r.signedUp ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-transparent bg-campaign-blue text-white hover:bg-blue-800'}">${r.signedUp ? 'Cancel Signup' : 'Sign Up for Shift'}</button>
                                 </div>
-                                <button onclick="app.toggleSignup('${r.id}', ${r.signedUp})" class="w-full py-2.5 rounded-lg text-sm font-bold transition border ${r.signedUp ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-transparent bg-campaign-blue text-white hover:bg-blue-800'}">${r.signedUp ? 'Cancel Signup' : 'Sign Up for Shift'}</button>
                             </div>
                         `).join('');
                     } catch(e) { document.getElementById('opps-list').innerHTML = `<p class="text-red-500">Error loading shifts.</p>`; }
@@ -1147,16 +1220,14 @@
 
                     } catch(e) { document.getElementById('notifications-list').innerHTML = '<p class="text-red-500 p-4">Error loading inbox.</p>'; }
                 },
-                admin: () => { app.adminTab('overview'); }, profile: () => {},
+                admin: () => { app.adminTab('overview'); },
                 
                 canvass: async () => {
-                    // Fetch dynamic form structure from Firestore
                     try {
                         const formDoc = await getDoc(doc(db, "campaignSettings", "canvassForm"));
                         if (formDoc.exists() && formDoc.data().fields) {
                             appState.canvassFormSchema = formDoc.data().fields;
                         } else {
-                            // Default fallback schema
                             appState.canvassFormSchema = [
                                 { id: 'support_level', type: 'select', label: 'Support Level', required: true, options: ['1 - Strong Supporter', '2 - Leaning Supporter', '3 - Undecided', '4 - Leaning Opponent', '5 - Strong Opponent', 'Not Home', 'Refused'] },
                                 { id: 'top_issue', type: 'text', label: 'Top Issue', required: false },
@@ -1169,8 +1240,6 @@
                     app.toggleCanvassTab('map'); 
                 }
             },
-
-            // --- CANVASSING LOGIC ---
 
             toggleCanvassTab: (tab) => {
                 document.getElementById('canvass-tab-map').className = tab === 'map' ? 'px-4 py-1.5 rounded-md text-sm font-bold bg-white text-campaign-blue shadow-sm' : 'px-4 py-1.5 rounded-md text-sm font-bold text-gray-500 hover:text-gray-900';
@@ -1189,15 +1258,13 @@
             initCanvassMap: async () => {
                 if (appState.canvassMap) appState.canvassMap.invalidateSize();
                 else {
-                    appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 19); // Zoomed in much closer
+                    appState.canvassMap = L.map('canvass-map').setView([33.9425, -117.2297], 19); 
                     
-                    // Use a Hybrid Satellite layer so users can clearly see roofs AND street names
                     L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
                         maxZoom: 21,
                         attribution: '© Google'
                     }).addTo(appState.canvassMap);
 
-                    // Add tap-to-pin functionality
                     appState.canvassMap.on('click', function(e) {
                         if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
                         appState.currentPin = L.marker(e.latlng).addTo(appState.canvassMap);
@@ -1205,7 +1272,6 @@
                     });
                 }
 
-                // Fetch data from OptiPlex and plot pins
                 try {
                     const response = await fetch('https://api.voterylee.com/api/canvass');
                     if (response.ok) {
@@ -1214,18 +1280,13 @@
                             if (log.gps) {
                                 const [lat, lng] = log.gps.split(',').map(n => parseFloat(n.trim()));
                                 if (lat && lng) {
-                                    
-                                    // Build the Survey Responses UI for the Map Popup
                                     let respHtml = '';
                                     if (log.responses && Object.keys(log.responses).length > 0) {
                                         respHtml = '<div class="mt-2 pt-2 border-t border-gray-200 space-y-1">';
                                         for (const [key, val] of Object.entries(log.responses)) {
                                             if (val === '' || val === false || val === null) continue;
-                                            
-                                            // Format "support_level" into "Support Level"
                                             const niceKey = key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                             const niceVal = typeof val === 'boolean' ? 'Yes' : UI.escapeHtml(val.toString());
-                                            
                                             respHtml += `<div class="text-xs"><span class="font-bold text-campaign-blue">${niceKey}:</span> <span class="text-gray-700">${niceVal}</span></div>`;
                                         }
                                         respHtml += '</div>';
@@ -1244,10 +1305,8 @@
                             }
                         });
                         
-                        // Try to center map on user's current location automatically
                         navigator.geolocation.getCurrentPosition(pos => {
                             appState.canvassMap.setView([pos.coords.latitude, pos.coords.longitude], 19);
-                            // Drop an initial pin where they are standing
                             if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
                             appState.selectedLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                             appState.currentPin = L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(appState.canvassMap);
@@ -1266,8 +1325,7 @@
                     const lat = pos.coords.latitude;
                     const lng = pos.coords.longitude;
                     
-                    // Move the map and the pin
-                    appState.canvassMap.setView([lat, lng], 20); // Zoom in really tight
+                    appState.canvassMap.setView([lat, lng], 20); 
                     if (appState.currentPin) appState.canvassMap.removeLayer(appState.currentPin);
                     appState.selectedLocation = { lat, lng };
                     appState.currentPin = L.marker([lat, lng]).addTo(appState.canvassMap);
@@ -1293,13 +1351,11 @@
                 addressInput.value = "Locating address...";
                 
                 try {
-                    // Add zoom=18 and addressdetails=1 to get specific street/house number data
                     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
                     const data = await res.json();
                     
                     if (data && data.address) {
                         const addr = data.address;
-                        // Build a clean US-style address
                         let houseNum = addr.house_number || '';
                         let street = addr.road || addr.pedestrian || '';
                         let city = addr.city || addr.town || addr.village || 'Moreno Valley';
@@ -1430,7 +1486,6 @@
                 const address = document.getElementById('canvass-address').value.trim();
                 const gps = document.getElementById('canvass-gps').value.trim();
                 
-                // Gather dynamic responses
                 const responses = {};
                 appState.canvassFormSchema.forEach(field => {
                     const el = document.getElementById(`dyn_${field.id}`);
@@ -1448,19 +1503,18 @@
                     timestamp: new Date().toISOString()
                 };
 
-                // Save to hidden LocalStorage "Waiting Room"
                 let pending = JSON.parse(localStorage.getItem('pendingCanvassLogs') || '[]');
                 pending.push(logData);
                 localStorage.setItem('pendingCanvassLogs', JSON.stringify(pending));
                 
                 UI.toast(`Saved locally! Attempting direct OptiPlex sync...`);
                 
-                // Clear inputs for the next door
                 document.getElementById('canvass-address').value = '';
                 appState.canvassFormSchema.forEach(field => {
                     const el = document.getElementById(`dyn_${field.id}`);
                     if (el) {
                         if (field.type === 'checkbox') el.checked = false;
+                        else if(field.type === 'stars') app.setStarRating(field.id, 0);
                         else el.value = '';
                     }
                 });
@@ -1468,7 +1522,6 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 btn.disabled = false; btn.innerHTML = '<i class="ph-bold ph-check-circle"></i> Save & Next Door';
 
-                // Try to flush the waiting room immediately
                 app.syncCanvassLogs();
             },
 
@@ -1477,7 +1530,6 @@
                 if (pending.length === 0 || !navigator.onLine) return;
 
                 const stillPending = [];
-                // Direct to OptiPlex Web Server
                 const optiplexApiUrl = 'https://api.voterylee.com/api/canvass'; 
 
                 for (const log of pending) {
@@ -1489,7 +1541,7 @@
                         });
                         if (!response.ok) throw new Error('OptiPlex unreachable');
                     } catch (e) {
-                        stillPending.push(log); // Keep it safe if it fails
+                        stillPending.push(log);
                     }
                 }
 
@@ -1498,8 +1550,6 @@
                      UI.toast("Offline knocks synced securely to OptiPlex!", "success");
                 }
             },
-
-            // --- ADMIN CANVASS FORM BUILDER ---
 
             renderAdminCanvassFormBuilder: async (container) => {
                 UI.showLoading(container.id);
@@ -1518,7 +1568,6 @@
                             <button onclick="app.adminDeleteCanvassField(${i})" class="text-red-400 p-1 hover:text-red-600"><i class="ph-bold ph-trash"></i></button>
                         </div>`).join('');
 
-                    // Fetch live canvass data from OptiPlex
                     let logsHtml = '<div class="p-8 text-center"><div class="spinner w-6 h-6 border-campaign-blue border-t-transparent mx-auto"></div><p class="text-xs text-gray-500 mt-2">Connecting to OptiPlex...</p></div>';
                     try {
                         const res = await fetch('https://api.voterylee.com/api/canvass');
@@ -1531,15 +1580,12 @@
                             } else {
                                 logsHtml = `<div class="overflow-x-auto"><table class="w-full text-left text-sm border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Date</th><th class="p-3">Volunteer</th><th class="p-3">Address</th><th class="p-3">Responses</th><th class="p-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-gray-100">` +
                                 logs.map(l => {
-                                    // Build the Survey Responses UI for the Admin Table
                                     let respBadges = '';
                                     if (l.responses && Object.keys(l.responses).length > 0) {
                                         for (const [key, val] of Object.entries(l.responses)) {
                                             if (val === '' || val === false || val === null) continue;
-                                            
                                             const niceKey = key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                                             const niceVal = typeof val === 'boolean' ? 'Yes' : UI.escapeHtml(val.toString());
-                                            
                                             respBadges += `<div class="text-[10px] bg-blue-50 text-blue-800 border border-blue-100 px-1.5 py-0.5 rounded inline-block mr-1 mb-1 shadow-sm"><b class="font-bold">${niceKey}:</b> ${niceVal}</div>`;
                                         }
                                     }
@@ -1558,7 +1604,6 @@
 
                     container.innerHTML = `
                         <div class="flex flex-col space-y-6 p-4">
-                            <!-- Top Section: Data Viewer -->
                             <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                                 <div class="bg-blue-50 border-b border-gray-200 p-4 flex justify-between items-center">
                                     <h3 class="font-bold text-lg text-campaign-blue flex items-center gap-2"><i class="ph-fill ph-database"></i> Door Knock Logs</h3>
@@ -1567,7 +1612,6 @@
                                 ${logsHtml}
                             </div>
 
-                            <!-- Bottom Section: Form Builder -->
                             <div class="flex flex-col md:flex-row border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                                 <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4 bg-gray-50">
                                     <h3 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="ph-fill ph-pencil-simple"></i> Edit Questionnaire</h3>
@@ -1600,7 +1644,6 @@
                             </div>
                         </div>
                     `;
-                    // Store locally so delete works
                     appState.adminCanvassFields = fields;
                 } catch(e) { 
                     console.error("Builder Error:", e);
@@ -1678,8 +1721,6 @@
                     document.body.removeChild(a);
                 } catch(e) { UI.toast('Error generating export.', 'error'); }
             },
-
-            // --- END CANVASSING LOGIC ---
 
             clockIn: async () => {
                 const btn = document.querySelector('#dash-clock-action button'); if(btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner w-5 h-5 mx-auto border-t-transparent"></div>'; }
@@ -1783,14 +1824,39 @@
 
             renderDirectory: (users) => {
                 const grid = document.getElementById('directory-grid'); if(!users.length) { UI.showEmpty('directory-grid', 'No volunteers found.'); return; }
-                grid.innerHTML = users.map(u => { const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?'; return `<div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer hover:shadow-md transition" onclick="app.viewProfile('${u.id}')"><div class="w-12 h-12 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center font-bold text-lg shrink-0">${init}</div><div class="min-w-0"><h3 class="font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h3><p class="text-xs text-gray-500 truncate"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Unknown')}</p></div></div>` }).join('');
+                grid.innerHTML = users.map(u => { 
+                    const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?'; 
+                    const url = u.photoUrl;
+                    return `<div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer hover:shadow-md transition" onclick="app.viewProfile('${u.id}')">
+                        <div class="w-12 h-12 rounded-full bg-blue-50 text-campaign-blue flex items-center justify-center font-bold text-lg shrink-0 overflow-hidden">
+                            ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                        </div>
+                        <div class="min-w-0"><h3 class="font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h3><p class="text-xs text-gray-500 truncate"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Unknown')}</p></div>
+                    </div>` 
+                }).join('');
             },
 
             filterDirectory: (term) => { const t = term.toLowerCase(); const filtered = appState.users.filter(u => (u.firstName?.toLowerCase().includes(t)) || (u.lastName?.toLowerCase().includes(t)) || (u.city?.toLowerCase().includes(t))); app.renderDirectory(filtered); },
 
             viewProfile: (uid) => {
                 const u = appState.users.find(x => x.id === uid); if(!u) return; const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
-                UI.openModal(`<div class="bg-white rounded-2xl overflow-hidden shadow-xl"><div class="bg-campaign-blue p-6 text-white flex items-center gap-4 relative"><button onclick="UI.closeModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center"><i class="ph-bold ph-x"></i></button><div class="w-16 h-16 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-3xl shrink-0">${init}</div><div><h2 class="text-2xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2><p class="opacity-80 text-sm"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Location N/A')}</p></div></div><div class="p-6"><h4 class="text-xs uppercase font-bold text-gray-400 mb-2">About</h4><p class="text-gray-700 text-sm whitespace-pre-wrap">${UI.escapeHtml(u.bio || 'No bio added.')}</p>${appState.isAdmin ? `<div class="mt-6 pt-4 border-t flex gap-2"><button onclick="app.adminViewProfile('${uid}')" class="text-xs font-bold text-campaign-blue bg-blue-50 px-3 py-1 rounded">Open in Admin Console</button></div>` : ''}</div></div>`);
+                const url = u.photoUrl;
+                UI.openModal(`
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-xl">
+                        <div class="bg-campaign-blue p-6 text-white flex items-center gap-4 relative">
+                            <button onclick="UI.closeModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center"><i class="ph-bold ph-x"></i></button>
+                            <div class="w-16 h-16 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-3xl shrink-0 overflow-hidden">
+                                ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                            </div>
+                            <div><h2 class="text-2xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2><p class="opacity-80 text-sm"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Location N/A')}</p></div>
+                        </div>
+                        <div class="p-6">
+                            <h4 class="text-xs uppercase font-bold text-gray-400 mb-2">About</h4>
+                            <p class="text-gray-700 text-sm whitespace-pre-wrap">${UI.escapeHtml(u.bio || 'No bio added.')}</p>
+                            ${appState.isAdmin ? `<div class="mt-6 pt-4 border-t flex gap-2"><button onclick="app.adminViewProfile('${uid}')" class="text-xs font-bold text-campaign-blue bg-blue-50 px-3 py-1 rounded">Open in Admin Console</button></div>` : ''}
+                        </div>
+                    </div>
+                `);
             },
 
             saveProfile: async () => {
@@ -1798,9 +1864,11 @@
                 try {
                     const data = { firstName: document.getElementById('prof-fname').value.trim(), lastName: document.getElementById('prof-lname').value.trim(), city: document.getElementById('prof-city').value.trim(), phone: document.getElementById('prof-phone').value.trim(), bio: document.getElementById('prof-bio').value.trim() };
                     await updateDoc(doc(db, "users", auth.currentUser.uid), data); appState.profile = {...appState.profile, ...data}; 
-                    const init = data.firstName ? data.firstName.charAt(0).toUpperCase() : '?';
-                    const avatarD = document.getElementById('user-avatar-desktop'); const avatarM = document.getElementById('user-avatar-mobile'); const nameD = document.getElementById('user-name-desktop');
-                    if(avatarD) avatarD.innerText = init; if(avatarM) avatarM.innerText = init; if(nameD) nameD.innerText = `${data.firstName} ${data.lastName}`;
+                    
+                    app.updateAvatarDisplays();
+                    
+                    const nameD = document.getElementById('user-name-desktop');
+                    if(nameD) nameD.innerText = `${data.firstName} ${data.lastName}`;
                     UI.toast('Profile saved successfully.');
                 } catch(e) { UI.toast('Error saving profile.', 'error'); }
                 btn.disabled = false; btn.innerText = 'Save Profile';
@@ -1830,7 +1898,16 @@
                     const users = userSnap.docs.map(d => ({id: d.id, ...d.data()})); const totalUsers = users.length; const admins = users.filter(u => u.role === 'admin').length;
                     const totalCampaignHours = users.reduce((sum, u) => sum + (u.totalHours || 0), 0).toFixed(1);
                     const recentUsers = [...users].sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)).slice(0, 4);
-                    let recentHtml = recentUsers.map(u => `<div class="flex items-center justify-between p-3 border-b last:border-0 hover:bg-gray-50 transition cursor-pointer" onclick="app.adminViewProfile('${u.id}')"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-xs shrink-0">${u.firstName ? u.firstName.charAt(0).toUpperCase() : '?'}</div><div class="min-w-0"><p class="text-sm font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</p><p class="text-[10px] text-gray-500 mt-0.5">${u.createdAt ? new Date(u.createdAt.toDate()).toLocaleDateString() : 'Recent'}</p></div></div><i class="ph ph-caret-right text-gray-400"></i></div>`).join('');
+                    let recentHtml = recentUsers.map(u => {
+                        const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                        const url = u.photoUrl;
+                        return `<div class="flex items-center justify-between p-3 border-b last:border-0 hover:bg-gray-50 transition cursor-pointer" onclick="app.adminViewProfile('${u.id}')"><div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                                ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                            </div>
+                            <div class="min-w-0"><p class="text-sm font-bold text-gray-900 truncate">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</p><p class="text-[10px] text-gray-500 mt-0.5">${u.createdAt ? new Date(u.createdAt.toDate()).toLocaleDateString() : 'Recent'}</p></div></div><i class="ph ph-caret-right text-gray-400"></i></div>`;
+                    }).join('');
+                    
                     container.innerHTML = `<div class="p-4 md:p-6 bg-gray-50/50"><h3 class="font-bold text-xl text-gray-900 mb-6 flex items-center gap-2"><i class="ph-fill ph-chart-pie-slice text-campaign-blue"></i> Platform Overview</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"><div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-users text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Volunteers</span><span class="text-4xl font-black text-campaign-blue relative z-10">${totalUsers}</span></div><div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-shield-check text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Admins</span><span class="text-4xl font-black text-campaign-teal relative z-10">${admins}</span></div><div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-calendar-check text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Total Shifts</span><span class="text-4xl font-black text-campaign-yellow relative z-10">${oppSnap.size}</span></div><div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group"><div class="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><i class="ph-fill ph-clock text-8xl"></i></div><span class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 block relative z-10">Total Hours</span><span class="text-4xl font-black text-gray-700 relative z-10">${totalCampaignHours}</span></div></div><div class="grid md:grid-cols-2 gap-6"><div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col"><div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-clock-counter-clockwise text-campaign-blue text-lg"></i> Newest Volunteers</h4><button onclick="app.adminTab('volunteers')" class="text-xs font-bold text-campaign-blue hover:underline">View All</button></div><div class="p-2">${recentHtml || '<p class="text-sm text-gray-500 p-4 text-center">No users.</p>'}</div></div><div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col"><div class="p-4 border-b border-gray-100 bg-gray-50 rounded-t-2xl"><h4 class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="ph-fill ph-lightning text-campaign-yellow text-lg"></i> Quick Actions</h4></div><div class="p-5 grid grid-cols-2 gap-3"><button onclick="app.adminTab('announcements')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-megaphone text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Post Update</span></button><button onclick="app.adminTab('opportunities')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-calendar-plus text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Create Shift</span></button><button onclick="app.adminTab('tools')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-key text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Provision Tool</span></button><button onclick="app.adminTab('volunteers')" class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-campaign-blue hover:bg-blue-50 transition group text-center"><i class="ph ph-users text-xl text-gray-400 group-hover:text-campaign-blue transition"></i><span class="text-[11px] font-bold text-gray-600 group-hover:text-campaign-blue transition block">Manage Users</span></button></div></div></div></div>`;
                 } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading stats.</p>'; }
             },
@@ -1848,7 +1925,26 @@
                     const snap = await getDoc(doc(db, "users", uid)); if(!snap.exists()) { UI.toast("Not found.", "error"); return; }
                     const u = snap.data(); let backBtn = `<button onclick="UI.closeModal()" class="w-full text-center py-2 text-sm text-gray-500 hover:bg-gray-100 rounded mt-4">Close</button>`;
                     if(context === 'signups') backBtn = `<button onclick="document.getElementById('modal-back-trigger').click()" class="w-full text-center py-2 text-sm text-campaign-blue bg-blue-50 hover:bg-blue-100 font-bold rounded mt-4"><i class="ph ph-arrow-left"></i> Back to Signups</button>`;
-                    UI.openModal(`<div class="bg-white rounded-2xl overflow-hidden p-6"><div class="flex justify-between items-start mb-4"><h2 class="text-xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2><span class="bg-gray-200 text-xs px-2 py-1 rounded font-bold uppercase">${UI.escapeHtml(u.role)}</span></div><div class="space-y-3 text-sm"><p><strong>Email:</strong> ${UI.escapeHtml(u.email)}</p><p><strong>Phone:</strong> ${UI.escapeHtml(u.phone || 'N/A')}</p><p><strong>City:</strong> ${UI.escapeHtml(u.city || 'N/A')}</p><p><strong>Total Hours:</strong> <span class="font-bold text-campaign-teal">${(u.totalHours || 0).toFixed(1)}</span></p><p><strong>Bio:</strong> ${UI.escapeHtml(u.bio || 'N/A')}</p></div>${backBtn}</div>`);
+                    
+                    const init = u.firstName ? u.firstName.charAt(0).toUpperCase() : '?';
+                    const url = u.photoUrl;
+                    
+                    UI.openModal(`
+                        <div class="bg-white rounded-2xl overflow-hidden p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-12 h-12 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-xl overflow-hidden">
+                                        ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
+                                    </div>
+                                    <div>
+                                        <h2 class="text-xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2>
+                                        <span class="bg-gray-200 text-xs px-2 py-0.5 rounded font-bold uppercase">${UI.escapeHtml(u.role)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="space-y-3 text-sm"><p><strong>Email:</strong> ${UI.escapeHtml(u.email)}</p><p><strong>Phone:</strong> ${UI.escapeHtml(u.phone || 'N/A')}</p><p><strong>City:</strong> ${UI.escapeHtml(u.city || 'N/A')}</p><p><strong>Total Hours:</strong> <span class="font-bold text-campaign-teal">${(u.totalHours || 0).toFixed(1)}</span></p><p><strong>Bio:</strong> ${UI.escapeHtml(u.bio || 'N/A')}</p></div>${backBtn}
+                        </div>
+                    `);
                 } catch(e) { UI.toast("Error loading profile", "error"); }
             },
 
@@ -1947,26 +2043,21 @@
                     let imageUrl = null;
                     const fileInput = document.getElementById('admin-ann-img');
                     
-                    // If a photo was selected, upload it to the OptiPlex first
                     if (fileInput.files.length > 0) {
                         const formData = new FormData();
                         formData.append('image', fileInput.files[0]);
-                        
-                        // Send direct to OptiPlex API
                         const uploadRes = await fetch('https://api.voterylee.com/api/upload', {
                             method: 'POST',
                             body: formData
                         });
-                        
                         if (uploadRes.ok) {
                             const data = await uploadRes.json();
-                            imageUrl = data.url; // Get the generated OptiPlex link
+                            imageUrl = data.url; 
                         } else {
                             throw new Error("Failed to upload image to private server.");
                         }
                     }
 
-                    // Save the announcement to Firebase, storing the OptiPlex URL if an image was uploaded
                     await addDoc(collection(db, "announcements"), { 
                         title: document.getElementById('admin-ann-title').value.trim(), 
                         body: document.getElementById('admin-ann-body').value.trim(), 
@@ -2006,10 +2097,72 @@
                 try {
                     const snap = await getDocs(query(collection(db, "opportunities"), orderBy("date", "desc")));
                     let rows = snap.docs.map(d => { const data = d.data(); return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm font-bold">${UI.escapeHtml(data.title)}</td><td class="p-3 text-sm">${UI.escapeHtml(data.date)}</td><td class="p-3 text-right space-x-2"><button onclick="app.adminViewSignups('${d.id}', '${UI.escapeHtml(data.title).replace(/'/g, "\\'")}')" class="text-campaign-blue p-1 px-2 text-xs font-bold bg-blue-50 rounded">Signups</button><button onclick="app.adminDeleteOpp('${d.id}')" class="text-red-400 p-1"><i class="ph-bold ph-trash"></i></button></td></tr>`; }).join('');
-                    container.innerHTML = `<div class="flex flex-col md:flex-row"><div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4"><h3 class="font-bold text-lg mb-4">New Event/Shift</h3><form onsubmit="event.preventDefault(); app.adminCreateOpp()" class="space-y-3"><div><label class="text-xs font-bold text-gray-500">Event Title</label><input type="text" id="admin-opp-title" required class="w-full border rounded p-2 text-sm"></div><div class="grid grid-cols-2 gap-2"><div><label class="text-xs font-bold text-gray-500">Date</label><input type="date" id="admin-opp-date" required class="w-full border rounded p-2 text-sm"></div><div><label class="text-xs font-bold text-gray-500">Time</label><input type="text" id="admin-opp-time" placeholder="e.g. 10:00 AM" required class="w-full border rounded p-2 text-sm"></div></div><div><label class="text-xs font-bold text-gray-500">Location</label><input type="text" id="admin-opp-location" required class="w-full border rounded p-2 text-sm"></div><div><label class="text-xs font-bold text-gray-500">Description</label><textarea id="admin-opp-desc" required rows="3" class="w-full border rounded p-2 text-sm"></textarea></div><button type="submit" id="admin-opp-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Create Event</button></form></div><div class="w-full md:w-2/3 p-4"><h3 class="font-bold text-lg mb-4">Manage Shifts</h3><div class="bg-white border rounded-lg overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Title</th><th class="p-3">Date</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="p-4 text-center text-gray-500">No shifts</td></tr>'}</tbody></table></div></div></div>`;
+                    
+                    container.innerHTML = `
+                        <div class="flex flex-col md:flex-row">
+                            <div class="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 p-4">
+                                <h3 class="font-bold text-lg mb-4">New Event/Shift</h3>
+                                <form onsubmit="event.preventDefault(); app.adminCreateOpp()" class="space-y-3">
+                                    <div><label class="text-xs font-bold text-gray-500">Event Title</label><input type="text" id="admin-opp-title" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div class="grid grid-cols-2 gap-2"><div><label class="text-xs font-bold text-gray-500">Date</label><input type="date" id="admin-opp-date" required class="w-full border rounded p-2 text-sm"></div><div><label class="text-xs font-bold text-gray-500">Time</label><input type="text" id="admin-opp-time" placeholder="e.g. 10:00 AM" required class="w-full border rounded p-2 text-sm"></div></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Location</label><input type="text" id="admin-opp-location" required class="w-full border rounded p-2 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-gray-500">Description</label><textarea id="admin-opp-desc" required rows="3" class="w-full border rounded p-2 text-sm"></textarea></div>
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500 block mb-1">Event Flyer / Photo (Optional)</label>
+                                        <input type="file" id="admin-opp-img" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-campaign-blue hover:file:bg-blue-100 cursor-pointer">
+                                    </div>
+                                    <button type="submit" id="admin-opp-btn" class="w-full bg-campaign-blue text-white rounded p-2 font-bold text-sm">Create Event</button>
+                                </form>
+                            </div>
+                            <div class="w-full md:w-2/3 p-4">
+                                <h3 class="font-bold text-lg mb-4">Manage Shifts</h3>
+                                <div class="bg-white border rounded-lg overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Title</th><th class="p-3">Date</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="p-4 text-center text-gray-500">No shifts</td></tr>'}</tbody></table></div>
+                            </div>
+                        </div>
+                    `;
                 } catch(e) { container.innerHTML = '<p class="p-4 text-red-500">Error loading opportunities.</p>'; }
             },
-            adminCreateOpp: async () => { const btn = document.getElementById('admin-opp-btn'); btn.disabled = true; btn.innerText = 'Creating...'; try { await addDoc(collection(db, "opportunities"), { title: document.getElementById('admin-opp-title').value.trim(), date: document.getElementById('admin-opp-date').value, time: document.getElementById('admin-opp-time').value.trim(), location: document.getElementById('admin-opp-location').value.trim(), description: document.getElementById('admin-opp-desc').value.trim(), createdAt: serverTimestamp() }); UI.toast("Event created!"); app.adminTab('opportunities'); } catch(e) { UI.toast("Error creating.", "error"); btn.disabled=false; btn.innerText='Create Event'; } },
+
+            adminCreateOpp: async () => { 
+                const btn = document.getElementById('admin-opp-btn'); 
+                btn.disabled = true; 
+                btn.innerText = 'Creating...'; 
+                
+                try { 
+                    let imageUrl = null;
+                    const fileInput = document.getElementById('admin-opp-img');
+                    
+                    if (fileInput && fileInput.files.length > 0) {
+                        const formData = new FormData();
+                        formData.append('image', fileInput.files[0]);
+                        const uploadRes = await fetch('https://api.voterylee.com/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (uploadRes.ok) {
+                            const data = await uploadRes.json();
+                            imageUrl = data.url; 
+                        }
+                    }
+
+                    await addDoc(collection(db, "opportunities"), { 
+                        title: document.getElementById('admin-opp-title').value.trim(), 
+                        date: document.getElementById('admin-opp-date').value, 
+                        time: document.getElementById('admin-opp-time').value.trim(), 
+                        location: document.getElementById('admin-opp-location').value.trim(), 
+                        description: document.getElementById('admin-opp-desc').value.trim(), 
+                        imageUrl: imageUrl,
+                        createdAt: serverTimestamp() 
+                    }); 
+                    UI.toast("Event created!"); 
+                    app.adminTab('opportunities'); 
+                } catch(e) { 
+                    UI.toast("Error creating.", "error"); 
+                    btn.disabled=false; 
+                    btn.innerText='Create Event'; 
+                } 
+            },
+
             adminDeleteOpp: (oppId) => UI.confirm("Delete Shift", "Delete this volunteer shift?", "Delete", true, async () => { await deleteDoc(doc(db, "opportunities", oppId)); UI.toast("Deleted"); app.adminTab('opportunities'); }),
 
             generateCertificate: (event) => {
@@ -2101,7 +2254,6 @@
 
         window.app = app;
         
-        // Force initialization if the browser already finished loading
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', app.init);
         } else {
