@@ -84,6 +84,10 @@
         .ios-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .ios-switch input:checked + .ios-slider { background-color: #3CAEA3; }
         .ios-switch input:checked + .ios-slider:before { transform: translateX(22px); }
+
+        /* Lightbox transitions */
+        .lightbox-enter { opacity: 1 !important; pointer-events: auto !important; }
+        .lightbox-img-enter { transform: scale(1) !important; }
     </style>
 </head>
 <body class="text-gray-800 antialiased overflow-hidden">
@@ -96,11 +100,17 @@
 
     <div id="toast-container" class="fixed top-[max(env(safe-area-inset-top),1rem)] left-1/2 transform -translate-x-1/2 z-[60] flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none"></div>
 
-    <div id="modal-container" class="fixed inset-0 z-50 hidden">
+    <div id="modal-container" class="fixed inset-0 z-[60] hidden">
         <div class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onclick="UI.closeModal()"></div>
         <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
             <div id="modal-content" class="pointer-events-auto w-full max-w-md max-h-[90vh] overflow-y-auto"></div>
         </div>
+    </div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="lightbox-container" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer opacity-0 pointer-events-none transition-opacity duration-300" onclick="UI.closeLightbox()">
+        <button class="absolute top-[max(env(safe-area-inset-top),1.5rem)] right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full text-white flex items-center justify-center text-xl transition shadow-lg backdrop-blur-md"><i class="ph-bold ph-x"></i></button>
+        <img id="lightbox-img" src="" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl transform scale-95 transition-transform duration-300">
     </div>
 
     <div id="landing-page" class="hidden fixed inset-0 bg-white overflow-y-auto z-40">
@@ -155,7 +165,7 @@
         </div>
     </div>
 
-    <div id="notification-onboarding" class="hidden fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div id="notification-onboarding" class="hidden fixed inset-0 z-[55] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl">
             <div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-campaign-blue"><i class="ph-fill ph-bell-ringing text-4xl animate-bounce"></i></div>
             <h2 class="text-2xl font-bold text-gray-900 mb-2">Stay in the loop</h2>
@@ -277,6 +287,28 @@
             closeModal: () => {
                 const container = document.getElementById('modal-container'); const content = document.getElementById('modal-content');
                 content.classList.remove('modal-enter'); container.classList.add('hidden');
+            },
+
+            openLightbox: (src) => {
+                const container = document.getElementById('lightbox-container');
+                const img = document.getElementById('lightbox-img');
+                img.src = src;
+                container.classList.remove('hidden');
+                // Trigger reflow
+                void container.offsetWidth;
+                container.classList.add('lightbox-enter');
+                img.classList.add('lightbox-img-enter');
+            },
+
+            closeLightbox: () => {
+                const container = document.getElementById('lightbox-container');
+                const img = document.getElementById('lightbox-img');
+                container.classList.remove('lightbox-enter');
+                img.classList.remove('lightbox-img-enter');
+                setTimeout(() => {
+                    container.classList.add('hidden');
+                    img.src = '';
+                }, 300);
             },
 
             confirm: (title, message, confirmText, isDanger, onConfirm) => {
@@ -1113,7 +1145,7 @@
                                 ${data.pinned ? '<div class="absolute top-0 right-0 bg-campaign-yellow text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl"><i class="ph-fill ph-push-pin"></i> Pinned</div>' : ''}
                                 <h3 class="font-bold text-xl text-gray-800 mb-1 pr-12">${UI.escapeHtml(data.title)}</h3>
                                 <p class="text-xs text-gray-500 mb-4"><i class="ph ph-calendar"></i> ${date} ${data.author ? `• by ${UI.escapeHtml(data.author)}` : ''}</p>
-                                ${data.imageUrl ? `<img src="${UI.escapeHtml(data.imageUrl)}" onerror="this.style.display='none'" class="w-full h-48 object-cover rounded-lg mb-4 bg-gray-100">` : ''}
+                                ${data.imageUrl ? `<img src="${UI.escapeHtml(data.imageUrl)}" onerror="this.style.display='none'" class="w-full h-48 object-cover rounded-lg mb-4 bg-gray-100 cursor-pointer hover:opacity-90 transition" onclick="UI.openLightbox(this.src)">` : ''}
                                 <p class="text-gray-700 whitespace-pre-line">${UI.escapeHtml(data.body)}</p>
                                 <div class="mt-6 pt-4 border-t border-gray-100"><h4 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1"><i class="ph ph-chat-circle text-campaign-blue text-lg"></i> Comments</h4><div id="comments-${data.id}" class="space-y-3 mb-4 text-sm max-h-60 overflow-y-auto pr-2 custom-scrollbar"><div class="spinner w-3 h-3 mx-auto"></div></div><form onsubmit="event.preventDefault(); app.postComment('${data.id}')" class="flex gap-2"><input type="text" id="comment-input-${data.id}" placeholder="Add a comment..." required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-campaign-blue"><button type="submit" id="comment-btn-${data.id}" class="bg-campaign-blue text-white px-4 py-2 rounded-lg text-sm font-medium">Post</button></form></div>
                             </div>
@@ -1136,7 +1168,7 @@
 
                         document.getElementById('opps-list').innerHTML = results.map(r => `
                             <div class="bg-white rounded-2xl shadow-sm border flex flex-col justify-between overflow-hidden">
-                                ${r.data.imageUrl ? `<img src="${UI.escapeHtml(r.data.imageUrl)}" onerror="this.style.display='none'" class="w-full h-40 object-cover bg-gray-100 border-b border-gray-100">` : ''}
+                                ${r.data.imageUrl ? `<img src="${UI.escapeHtml(r.data.imageUrl)}" onerror="this.style.display='none'" class="w-full h-40 object-cover bg-gray-100 border-b border-gray-100 cursor-pointer hover:opacity-90 transition" onclick="UI.openLightbox(this.src)">` : ''}
                                 <div class="p-5 flex-1 flex flex-col justify-between">
                                     <div>
                                         <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-gray-900">${UI.escapeHtml(r.data.title)}</h3>${r.signedUp ? '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded shrink-0 ml-2">Attending</span>' : ''}</div>
@@ -1580,11 +1612,11 @@
                 if (pending.length === 0 || !navigator.onLine) return;
 
                 const stillPending = [];
-                const optiplexApiUrl = 'https://api.voterylee.com/api/canvass'; 
+                const serverApiUrl = 'https://api.voterylee.com/api/canvass'; 
 
                 for (const log of pending) {
                     try {
-                        const response = await fetch(optiplexApiUrl, {
+                        const response = await fetch(serverApiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(log)
@@ -1899,7 +1931,7 @@
                     <div class="bg-white rounded-2xl overflow-hidden shadow-xl">
                         <div class="bg-campaign-blue p-6 text-white flex items-center gap-4 relative">
                             <button onclick="UI.closeModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center"><i class="ph-bold ph-x"></i></button>
-                            <div class="w-16 h-16 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-3xl shrink-0 overflow-hidden">
+                            <div class="w-16 h-16 rounded-full bg-white text-campaign-blue flex items-center justify-center font-bold text-3xl shrink-0 overflow-hidden cursor-pointer hover:opacity-90 transition" ${url ? `onclick="UI.openLightbox('${UI.escapeHtml(url)}'); UI.closeModal()"` : ''}>
                                 ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
                             </div>
                             <div><h2 class="text-2xl font-bold">${UI.escapeHtml(u.firstName)} ${UI.escapeHtml(u.lastName)}</h2><p class="opacity-80 text-sm"><i class="ph ph-map-pin"></i> ${UI.escapeHtml(u.city || 'Location N/A')}</p></div>
@@ -1987,7 +2019,7 @@
                         <div class="bg-white rounded-2xl overflow-hidden p-6">
                             <div class="flex justify-between items-start mb-4">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-12 h-12 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-xl overflow-hidden">
+                                    <div class="w-12 h-12 rounded-full bg-blue-100 text-campaign-blue flex items-center justify-center font-bold text-xl overflow-hidden cursor-pointer hover:opacity-90 transition" ${url ? `onclick="UI.openLightbox('${UI.escapeHtml(url)}'); UI.closeModal()"` : ''}>
                                         ${url ? `<img src="${UI.escapeHtml(url)}" class="w-full h-full object-cover">` : init}
                                     </div>
                                     <div>
@@ -2065,7 +2097,6 @@
                                     <div>
                                         <label class="text-xs font-bold text-gray-500 block mb-1">Attach Photo (Optional)</label>
                                         <input type="file" id="admin-ann-img" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-campaign-blue hover:file:bg-blue-100 cursor-pointer">
-                                        <p class="text-[10px] text-gray-400 mt-1">Photos are securely hosted on your private server.</p>
                                     </div>
                                     <div class="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 mt-2">
                                         <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" id="admin-ann-pinned" class="rounded border-gray-300 text-campaign-blue focus:ring-campaign-blue w-4 h-4"> Pin to top</label>
@@ -2079,6 +2110,10 @@
                                     <p class="text-xs text-gray-500 mb-2 leading-relaxed">Sends an email via Gmail to every active volunteer.</p>
                                     <div><label class="text-xs font-bold text-gray-500">Subject</label><input type="text" id="admin-email-sub" required class="w-full border rounded p-2 text-sm focus:border-campaign-blue outline-none transition"></div>
                                     <div><label class="text-xs font-bold text-gray-500">Body</label><textarea id="admin-email-body" required rows="3" class="w-full border rounded p-2 text-sm focus:border-campaign-blue outline-none transition"></textarea></div>
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500 block mb-1">Attach Photo (Optional)</label>
+                                        <input type="file" id="admin-email-img" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-campaign-blue hover:file:bg-blue-100 cursor-pointer">
+                                    </div>
                                     <button type="submit" id="admin-email-btn" class="w-full bg-gray-800 text-white rounded p-2 font-bold text-sm hover:bg-black transition shadow-sm flex justify-center items-center gap-2"><i class="ph-bold ph-envelope-simple"></i> Send Email Blast</button>
                                 </form>
 
@@ -2114,7 +2149,7 @@
                             const data = await uploadRes.json();
                             imageUrl = data.url; 
                         } else {
-                            throw new Error("Failed to upload image to private server.");
+                            throw new Error("Failed to upload image to server.");
                         }
                     }
 
@@ -2129,7 +2164,14 @@
                     
                     if (doNotify) {
                         await addDoc(collection(db, "pushAlerts"), { message: `New Update: ${title}`, author: `${appState.profile.firstName} ${appState.profile.lastName}`, createdAt: serverTimestamp() });
-                        await addDoc(collection(db, "mail_queue"), { subject: `Campaign Update: ${title}`, body: `${body}\n\nOpen the RyleeVolunteer app to read more!`, status: 'pending', createdAt: serverTimestamp(), author: `${appState.profile.firstName} ${appState.profile.lastName}` });
+                        await addDoc(collection(db, "mail_queue"), { 
+                            subject: `Campaign Update: ${title}`, 
+                            body: `${body}\n\nOpen the RyleeVolunteer app to read more!`, 
+                            imageUrl: imageUrl, // Pass image to the backend email worker
+                            status: 'pending', 
+                            createdAt: serverTimestamp(), 
+                            author: `${appState.profile.firstName} ${appState.profile.lastName}` 
+                        });
                     }
 
                     UI.toast("Posted!"); 
@@ -2142,19 +2184,49 @@
             },
             
             adminSendPushAlert: async () => { const btn = document.getElementById('admin-push-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>'; try { await addDoc(collection(db, "pushAlerts"), { message: document.getElementById('admin-push-msg').value.trim(), author: appState.profile.firstName + ' ' + appState.profile.lastName, createdAt: serverTimestamp() }); UI.toast("Push alert sent to all volunteers!"); document.getElementById('admin-push-msg').value = ''; btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } catch(e) { UI.toast("Error sending alert.", "error"); btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } },
+            
             adminSendMassEmail: async () => {
-                const btn = document.getElementById('admin-email-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>';
+                const btn = document.getElementById('admin-email-btn'); 
+                btn.disabled = true; 
+                btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>';
+                
                 try {
+                    let imageUrl = null;
+                    const fileInput = document.getElementById('admin-email-img');
+                    
+                    if (fileInput && fileInput.files.length > 0) {
+                        const formData = new FormData();
+                        formData.append('image', fileInput.files[0]);
+                        const uploadRes = await fetch('https://api.voterylee.com/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (uploadRes.ok) {
+                            const data = await uploadRes.json();
+                            imageUrl = data.url; 
+                        }
+                    }
+
                     await addDoc(collection(db, "mail_queue"), {
                         subject: document.getElementById('admin-email-sub').value.trim(),
                         body: document.getElementById('admin-email-body').value.trim(),
-                        status: 'pending', createdAt: serverTimestamp(), author: appState.profile.firstName + ' ' + appState.profile.lastName
+                        imageUrl: imageUrl, // Save image to the queue for the backend worker
+                        status: 'pending', 
+                        createdAt: serverTimestamp(), 
+                        author: appState.profile.firstName + ' ' + appState.profile.lastName
                     });
+                    
                     UI.toast("Email blast queued for delivery!"); 
-                    document.getElementById('admin-email-sub').value = ''; document.getElementById('admin-email-body').value = '';
-                } catch(e) { UI.toast("Error queuing email.", "error"); }
-                btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-envelope-simple"></i> Send Email Blast';
+                    document.getElementById('admin-email-sub').value = ''; 
+                    document.getElementById('admin-email-body').value = '';
+                    if (fileInput) fileInput.value = '';
+                } catch(e) { 
+                    UI.toast("Error queuing email.", "error"); 
+                }
+                btn.disabled=false; 
+                btn.innerHTML = '<i class="ph-bold ph-envelope-simple"></i> Send Email Blast';
             },
+
             adminToggleAnnouncementPin: async (id, isPinned) => { try { await updateDoc(doc(db, "announcements", id), { pinned: !isPinned }); UI.toast(!isPinned ? "Pinned to top!" : "Unpinned."); app.adminTab('announcements'); } catch(e) { UI.toast("Error updating pin status.", "error"); } },
             adminDeleteAnnouncement: (id) => UI.confirm("Delete Update", "Remove this announcement?", "Delete", true, async () => { await deleteDoc(doc(db, "announcements", id)); UI.toast("Deleted"); app.adminTab('announcements'); }),
 
