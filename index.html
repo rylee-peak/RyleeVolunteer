@@ -324,6 +324,10 @@
                     }).catch(e => { if(e.message && !e.message.includes("'<Location>'") && !e.toString().includes("<")) console.error('SW Error:', e); });
                 }
 
+                app.performAuthCheck();
+            },
+
+            performAuthCheck: () => {
                 onAuthStateChanged(auth, async (user) => {
                     const loader = document.getElementById('global-loader');
                     if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.classList.add('hidden'), 300); }
@@ -750,8 +754,8 @@
                                 </button>
                             </div>
 
-                            <div class="absolute bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 z-[400] w-full px-6 flex justify-center">
-                                <button onclick="app.startDoorLogFromMap()" class="w-full sm:w-auto bg-campaign-teal text-white px-8 py-4 rounded-full font-bold shadow-xl hover:bg-teal-600 transition flex items-center justify-center gap-2 text-lg border-2 border-white/20">
+                            <div class="absolute bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 z-[400] w-full px-6 flex justify-center mt-6 md:mt-0">
+                                <button onclick="app.startDoorLogFromMap()" class="w-full sm:w-auto bg-campaign-teal text-white px-8 py-4 rounded-full font-bold shadow-xl hover:bg-teal-600 transition flex items-center justify-center gap-2 text-lg border-2 border-white/20 mb-8 md:mb-0">
                                     <i class="ph-bold ph-door"></i> Log This Door
                                 </button>
                             </div>
@@ -983,6 +987,7 @@
                                         <div class="w-8 h-8 rounded-full bg-yellow-100 text-campaign-yellow flex items-center justify-center shrink-0"><i class="ph-fill ph-shooting-star"></i></div>
                                         <div class="bg-gray-100 text-gray-800 p-3 rounded-2xl rounded-tl-none text-sm shadow-sm markdown-content">${parsedResponse}</div>
                                     </div>
+                                </div>
                                 `;
                             } else if (data.status === 'pending' || data.status === 'processing') {
                                 isTyping = true;
@@ -1209,8 +1214,32 @@
                             if (log.gps) {
                                 const [lat, lng] = log.gps.split(',').map(n => parseFloat(n.trim()));
                                 if (lat && lng) {
-                                    L.marker([lat, lng]).addTo(appState.canvassMap)
-                                      .bindPopup(`<b>${UI.escapeHtml(log.address)}</b><br><span class="text-xs text-gray-500">Logged by ${UI.escapeHtml(log.volunteer_name)}</span>`);
+                                    
+                                    // Build the Survey Responses UI for the Map Popup
+                                    let respHtml = '';
+                                    if (log.responses && Object.keys(log.responses).length > 0) {
+                                        respHtml = '<div class="mt-2 pt-2 border-t border-gray-200 space-y-1">';
+                                        for (const [key, val] of Object.entries(log.responses)) {
+                                            if (val === '' || val === false || val === null) continue;
+                                            
+                                            // Format "support_level" into "Support Level"
+                                            const niceKey = key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                            const niceVal = typeof val === 'boolean' ? 'Yes' : UI.escapeHtml(val.toString());
+                                            
+                                            respHtml += `<div class="text-xs"><span class="font-bold text-campaign-blue">${niceKey}:</span> <span class="text-gray-700">${niceVal}</span></div>`;
+                                        }
+                                        respHtml += '</div>';
+                                    }
+                                    
+                                    const popupContent = `
+                                        <div class="min-w-[180px]">
+                                            <b class="text-sm block mb-1 text-gray-900 leading-tight">${UI.escapeHtml(log.address)}</b>
+                                            <span class="text-xs text-gray-500 flex items-center gap-1"><i class="ph-fill ph-user"></i> ${UI.escapeHtml(log.volunteer_name)}</span>
+                                            ${respHtml}
+                                        </div>
+                                    `;
+                                    
+                                    L.marker([lat, lng]).addTo(appState.canvassMap).bindPopup(popupContent);
                                 }
                             }
                         });
@@ -1500,8 +1529,24 @@
                             if (logs.length === 0) {
                                 logsHtml = '<p class="text-sm text-gray-500 p-4 text-center">No doors logged yet.</p>';
                             } else {
-                                logsHtml = `<div class="overflow-x-auto"><table class="w-full text-left text-sm border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Date</th><th class="p-3">Volunteer</th><th class="p-3">Address</th><th class="p-3">GPS</th><th class="p-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-gray-100">` +
-                                logs.map(l => `<tr class="hover:bg-gray-50"><td class="p-3 whitespace-nowrap">${new Date(l.timestamp).toLocaleDateString()} ${new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td><td class="p-3 font-medium">${UI.escapeHtml(l.volunteer_name)}</td><td class="p-3">${UI.escapeHtml(l.address)}</td><td class="p-3 text-[10px] text-gray-400 font-mono">${UI.escapeHtml(l.gps)}</td><td class="p-3 text-right"><button onclick="app.adminDeleteCanvassLog('${l.id}')" class="text-red-400 hover:text-red-600 p-1 transition bg-red-50 rounded" title="Delete Log"><i class="ph-bold ph-trash"></i></button></td></tr>`).join('') +
+                                logsHtml = `<div class="overflow-x-auto"><table class="w-full text-left text-sm border-collapse"><thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b"><tr><th class="p-3">Date</th><th class="p-3">Volunteer</th><th class="p-3">Address</th><th class="p-3">Responses</th><th class="p-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-gray-100">` +
+                                logs.map(l => {
+                                    // Build the Survey Responses UI for the Admin Table
+                                    let respBadges = '';
+                                    if (l.responses && Object.keys(l.responses).length > 0) {
+                                        for (const [key, val] of Object.entries(l.responses)) {
+                                            if (val === '' || val === false || val === null) continue;
+                                            
+                                            const niceKey = key.replace(/^dyn_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                            const niceVal = typeof val === 'boolean' ? 'Yes' : UI.escapeHtml(val.toString());
+                                            
+                                            respBadges += `<div class="text-[10px] bg-blue-50 text-blue-800 border border-blue-100 px-1.5 py-0.5 rounded inline-block mr-1 mb-1 shadow-sm"><b class="font-bold">${niceKey}:</b> ${niceVal}</div>`;
+                                        }
+                                    }
+                                    if (!respBadges) respBadges = '<span class="text-[10px] text-gray-400 italic">No survey data collected.</span>';
+
+                                    return `<tr class="hover:bg-gray-50"><td class="p-3 whitespace-nowrap">${new Date(l.timestamp).toLocaleDateString()} ${new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td><td class="p-3 font-medium">${UI.escapeHtml(l.volunteer_name)}</td><td class="p-3 leading-tight">${UI.escapeHtml(l.address)}<br><span class="text-[9px] text-gray-400 font-mono"><i class="ph-fill ph-crosshair"></i> ${UI.escapeHtml(l.gps)}</span></td><td class="p-3 min-w-[200px]">${respBadges}</td><td class="p-3 text-right"><button onclick="app.adminDeleteCanvassLog('${l.id}')" class="text-red-400 hover:text-red-600 p-1 transition bg-red-50 rounded" title="Delete Log"><i class="ph-bold ph-trash"></i></button></td></tr>`;
+                                }).join('') +
                                 `</tbody></table></div>`;
                             }
                         } else {
