@@ -2280,7 +2280,7 @@
                 } catch(e) { container.innerHTML = '<p class="text-red-500 p-4">Error loading module.</p>'; }
             },
 
-            adminCreateAnnouncement: async () => { 
+ adminCreateAnnouncement: async () => { 
                 const btn = document.getElementById('admin-ann-btn'); 
                 btn.disabled = true; 
                 btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>'; 
@@ -2318,6 +2318,7 @@
                     
                     if (doNotify) {
                         await addDoc(collection(db, "pushAlerts"), { message: `New Update: ${title}`, author: `${appState.profile.firstName} ${appState.profile.lastName}`, createdAt: serverTimestamp() });
+                        await addDoc(collection(db, "push_queue"), { title: "Campaign Update", body: title, topic: "all_users", status: "pending", createdAt: serverTimestamp() });
                         await addDoc(collection(db, "mail_queue"), { 
                             subject: `Campaign Update: ${title}`, 
                             body: `${body}\n\nOpen the RyleeVolunteer app to read more!`, 
@@ -2337,7 +2338,7 @@
                 } 
             }, 
             
-            adminSendPushAlert: async () => { const btn = document.getElementById('admin-push-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>'; try { await addDoc(collection(db, "pushAlerts"), { message: document.getElementById('admin-push-msg').value.trim(), author: appState.profile.firstName + ' ' + appState.profile.lastName, createdAt: serverTimestamp() }); UI.toast("Push alert sent to all volunteers!"); document.getElementById('admin-push-msg').value = ''; btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } catch(e) { UI.toast("Error sending alert.", "error"); btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } },
+            adminSendPushAlert: async () => { const btn = document.getElementById('admin-push-btn'); btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 mx-auto border-t-transparent"></div>'; try { const msg = document.getElementById('admin-push-msg').value.trim(); await addDoc(collection(db, "pushAlerts"), { message: msg, author: appState.profile.firstName + ' ' + appState.profile.lastName, createdAt: serverTimestamp() }); await addDoc(collection(db, "push_queue"), { title: "Campaign Alert", body: msg, topic: "all_users", status: "pending", createdAt: serverTimestamp() }); UI.toast("Push alert sent to all volunteers!"); document.getElementById('admin-push-msg').value = ''; btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } catch(e) { UI.toast("Error sending alert.", "error"); btn.disabled=false; btn.innerHTML = '<i class="ph-bold ph-bell-ringing"></i> Send Push Alert'; } },
             
             adminSendMassEmail: async () => {
                 const btn = document.getElementById('admin-email-btn'); 
