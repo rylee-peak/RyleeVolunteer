@@ -18,7 +18,7 @@
 },
 "icons": [
 {
-"src": "/appstore-images/",
+"src": "/appstore-images/ios/512.png",
 "sizes": "512x512",
 "type": "image/png",
 "purpose": "any maskable"
